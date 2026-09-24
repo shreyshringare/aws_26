@@ -14,6 +14,8 @@ N_JOBS = int(os.environ.get("ER_JOBS", max(1, (os.cpu_count() or 2) - 2)))
 # --- sampling -----------------------------------------------------------------
 DEV_FRAC = 0.10    # share of train S1 entities used by --eval-only dev runs
 TRAIN_FRAC = 0.15  # share of train S1 entities used to fit models in full runs
+TRAIN_KEEP_RANK = 10    # negatives with block_rank below this are always fitted on
+TRAIN_EASY_RATE = 0.25  # share of the remaining (easy) negatives fitted on, weighted 1/rate
 
 # --- blocking -----------------------------------------------------------------
 BLOCK_MAX_DF = 2000   # drop keys whose pool document frequency exceeds this

@@ -16,7 +16,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import blocking, config, context, decide, evaluate, features, io_utils, model, noise, normalize, translit
+from . import (blocking, config, context, decide, evaluate, features, io_utils, model, noise, normalize,
+               sampling, translit)
 
 LOG_FIELDS = ["exp_id", "change", "block_recall", "cands_per_entity", "f05_all", "f05_us", "f05_in",
               "f05_singletons", "f05_matched", "us_to_in", "in_to_us", "t_match", "t_empty",
@@ -104,13 +105,6 @@ def gt_rid_pairs(gt, s1n, pooln):
                          "pool_rid": m2.reindex(p["cand_id"].to_numpy()).to_numpy(np.int64)})
 
 
-def sample_s1(s1n, frac):
-    """Stratified (per country label) sample of S1 rids; frac >= 1 returns all."""
-    if frac >= 1:
-        return s1n["rid"].to_numpy()
-    return s1n.groupby("country", group_keys=False).sample(frac=frac, random_state=config.SEED)["rid"].to_numpy()
-
-
 def pair_key(s1_rid, pool_rid):
     """Pack (s1_rid, pool_rid) into one int64 for fast set operations."""
     return np.asarray(s1_rid, np.int64) * (1 << 32) + np.asarray(pool_rid, np.int64)
@@ -151,7 +145,7 @@ class Scorer:
         return evaluate.breakdown(self.lists(sel), self.gt, self.ids, self.country)
 
 
-def transfer_report(feats, y, cols, scorer, dec, extra):
+def transfer_report(feats, y, cols, scorer, dec, extra, fit_mask, fit_w):
     """Cross-country transfer (France proxy): train stage-1 on one label, score each other label."""
     ctry = scorer.s1n["country"].take(feats["s1_rid"].to_numpy()).to_numpy()
     labels = list(pd.unique(ctry))
@@ -161,7 +155,8 @@ def transfer_report(feats, y, cols, scorer, dec, extra):
             if a == b:
                 continue
             ma, mb = ctry == a, ctry == b
-            m = model.fit_full(feats.loc[ma, cols], y[ma], n_estimators=300)
+            m = model.fit_full(feats.loc[ma, cols], y[ma], n_estimators=300,
+                               train_mask=fit_mask[ma], sample_weight=fit_w[ma])
             fb = feats.loc[mb, ["s1_rid", "pool_rid"]].assign(p=m.predict_proba(feats.loc[mb, cols])[:, 1])
             sel = decide.apply_decoder(fb, dec, None, extra)
             out[f"{a}->{b}"] = scorer(sel, mask=scorer.country == b)
@@ -233,7 +228,8 @@ def main(argv=None):
     pos_all = gt_rid_pairs(gt, s1n, pooln)
 
     frac = args.frac if args.frac is not None else (config.DEV_FRAC if args.eval_only else config.TRAIN_FRAC)
-    rids = sample_s1(s1n, frac)
+    n_matches = np.bincount(pos_all["s1_rid"].to_numpy(), minlength=len(s1n))
+    rids = sampling.stratified_s1(s1n, n_matches, frac)
     pos = pos_all[np.isin(pos_all["s1_rid"].to_numpy(), rids)]
     log(f"train entities={len(rids):,} positives={len(pos):,}")
 
@@ -254,8 +250,10 @@ def main(argv=None):
                 pair_key(pos["s1_rid"], pos["pool_rid"])).astype(np.int8)
     groups = feats["s1_rid"].to_numpy()
     cols1 = model.feature_cols(feats)
-    log(f"stage1: {len(feats):,} pairs, {len(cols1)} features, pos rate {y.mean():.3f}")
-    p1, models1 = model.train_oof(feats[cols1], y, groups)
+    fit_mask, fit_w = sampling.training_rows(feats["f_block_rank"].to_numpy(), y)
+    fit = dict(train_mask=fit_mask, sample_weight=fit_w)
+    log(f"stage1: {len(feats):,} pairs ({fit_mask.sum():,} fitted), {len(cols1)} features, pos rate {y.mean():.3f}")
+    p1, models1 = model.train_oof(feats[cols1], y, groups, **fit)
     feats["p1"] = p1
 
     cols, pcol, models2 = cols1, "p1", None
@@ -263,7 +261,7 @@ def main(argv=None):
         feats = context.add_stage2_features(feats, pooln)
         cols = cols1 + model.feature_cols(feats, prefix="f2_")
         log(f"stage2: {len(cols)} features")
-        p2, models2 = model.train_oof(feats[cols], y, groups)
+        p2, models2 = model.train_oof(feats[cols], y, groups, **fit)
         feats["p2"] = p2
         pcol = "p2"
 
@@ -276,7 +274,7 @@ def main(argv=None):
     sel = decide.apply_decoder(scored, dec, calib, extra)
     bd = scorer.breakdown(sel)
     log(f"OOF breakdown {bd}")
-    tr = {} if args.no_transfer else transfer_report(feats, y, cols1, scorer, dec, extra)
+    tr = {} if args.no_transfer else transfer_report(feats, y, cols1, scorer, dec, extra, fit_mask, fit_w)
     log(f"transfer {tr}")
     row.update({"f05_all": round(bd["all"], 5), "f05_us": round(bd.get("country=US", np.nan), 5),
                 "f05_in": round(bd.get("country=India", np.nan), 5),
@@ -290,8 +288,8 @@ def main(argv=None):
         return
 
     log("fitting full models for test")
-    m1 = model.fit_full(feats[cols1], y, n_estimators=model.mean_best_iter(models1))
-    m2 = model.fit_full(feats[cols], y, n_estimators=model.mean_best_iter(models2)) if models2 else None
+    m1 = model.fit_full(feats[cols1], y, n_estimators=model.mean_best_iter(models1), **fit)
+    m2 = model.fit_full(feats[cols], y, n_estimators=model.mean_best_iter(models2), **fit) if models2 else None
     del feats, scored, sel, scorer, s1n, pooln  # free train memory before test inference
     s1t, poolt = load_split_norm(args.data, "test", table)
     candt = cached_frame("cands_test", lambda: blocking.generate_candidates(s1t, poolt))
