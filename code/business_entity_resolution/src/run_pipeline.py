@@ -197,8 +197,11 @@ def write_outputs(out_dir, s1t, poolt, candt, selt):
 
 
 def validate(out_dir, data):
-    """Run the official validator; returns its exit code."""
+    """Run the official validator if present (it lives outside the package); returns its exit code or None."""
     v = config.REPO_ROOT / "utils" / "validate_submission.py"
+    if not v.exists():
+        log("official validator not found; skipping validation")
+        return None
     r = subprocess.run([sys.executable, str(v), "--matching", str(Path(out_dir) / "matching_results.tsv"),
                         "--candidate", str(Path(out_dir) / "candidate_pairs.tsv"),
                         "--test-dir", str(Path(data) / "test")])
@@ -289,20 +292,32 @@ def main(argv=None):
     log("fitting full models for test")
     m1 = model.fit_full(feats[cols1], y, n_estimators=model.mean_best_iter(models1))
     m2 = model.fit_full(feats[cols], y, n_estimators=model.mean_best_iter(models2)) if models2 else None
+    del feats, scored, sel, scorer, s1n, pooln  # free train memory before test inference
     s1t, poolt = load_split_norm(args.data, "test", table)
     candt = cached_frame("cands_test", lambda: blocking.generate_candidates(s1t, poolt))
     log(f"test candidates {len(candt):,} ({len(candt) / len(s1t):.1f}/entity)")
-    ft = cached_frame("feats1_test", lambda: features.build_features(candt, s1t, poolt, generic))
-    ft["p1"] = m1.predict_proba(ft[cols1])[:, 1]
-    if m2 is not None:
+    if m2 is None:
+        scored_t = score_stream(candt, s1t, poolt, generic, m1, cols1)
+    else:
+        ft = cached_frame("feats1_test", lambda: features.build_features(candt, s1t, poolt, generic))
+        ft["p1"] = m1.predict_proba(ft[cols1])[:, 1]
         ft = context.add_stage2_features(ft, poolt)
-        ft["p2"] = m2.predict_proba(ft[cols])[:, 1]
-    scored_t = ft[["s1_rid", "pool_rid"]].assign(p=ft[pcol].to_numpy())
+        scored_t = ft[["s1_rid", "pool_rid"]].assign(p=m2.predict_proba(ft[cols])[:, 1])
     selt = decide.apply_decoder(scored_t, dec, calib, extra)
-    write_outputs(args.out, s1t, poolt, ft[["s1_rid", "pool_rid"]], selt)
+    write_outputs(args.out, s1t, poolt, candt[["s1_rid", "pool_rid"]], selt)
     code = validate(args.out, args.data)
     log(f"validator exit={code}; matched entities={selt['s1_rid'].nunique():,}/{len(s1t):,}; "
         f"done in {time.time() - t0:.0f}s")
+
+
+def score_stream(cands, s1n, pooln, generic, m, cols, chunk=2_000_000):
+    """Stage-1 inference in candidate chunks, keeping only (s1_rid, pool_rid, p) to bound memory."""
+    parts = []
+    for i in range(0, len(cands), chunk):
+        f = features.build_features(cands.iloc[i:i + chunk], s1n, pooln, generic)
+        parts.append(f[["s1_rid", "pool_rid"]].assign(p=m.predict_proba(f[cols])[:, 1].astype(np.float32)))
+        log(f"scored {min(i + chunk, len(cands)):,}/{len(cands):,} test pairs")
+    return pd.concat(parts, ignore_index=True)
 
 
 if __name__ == "__main__":
