@@ -1,15 +1,13 @@
 """Tests for noise-channel features."""
-from src.noise import NOISE_FEATS, digit_deletion, fit_generic_vocab, noise_row
-
-ROW = ("name_core", "legal", "legal_first", "nums", "postcode", "addr_alpha",
-       "name_norm", "name_raw", "addr_norm", "addr_raw")
+from src.noise import NOISE_FEATS, ROW_COLS, acronym, digit_deletion, fit_generic_vocab, noise_row
 
 
 def _row(**kw):
-    base = dict(name_core="", legal="", legal_first=0, nums="", postcode="", addr_alpha="",
+    """Row tuple in ROW_COLS order with empty defaults."""
+    base = dict(name_core="", legal="", legal_first=0, nums="", addr_alpha="",
                 name_norm="", name_raw="", addr_norm="", addr_raw="")
     base.update(kw)
-    return tuple(base[k] for k in ROW)
+    return tuple(base[k] for k in ROW_COLS)
 
 
 def test_digit_deletion():
@@ -27,6 +25,22 @@ def test_generic_vocab():
     assert v == {"care", "services"}
 
 
+def test_generic_vocab_min_length_and_default_count():
+    s1 = ["davis co care", "blue ocean"] * 400
+    pool = ["davis care", "blue ocean xyz"] * 400
+    assert fit_generic_vocab(s1, pool) == {"xyz"}  # 'co' too short
+    assert fit_generic_vocab(s1[:500], pool[:500]) == set()  # 250 < default min_count 300
+
+
+def test_acronym():
+    assert acronym("m e".split(), "mahalakshmi engineering".split()) == 1
+    assert acronym("ibm".split(), "international business machines".split()) == 1
+    assert acronym("tata consultancy services".split(), "tcs".split()) == 1
+    assert acronym("xy traders".split(), "alpha beta".split()) == 0
+    assert acronym("valley".split(), "vlley".split()) == 0
+    assert acronym([], []) == 0
+
+
 def test_noise_row_values():
     a = _row(name_core="valley holdings", legal="inc", legal_first=0, nums="719",
              addr_alpha="mountain rd addison vt", name_norm="valley holdings inc",
@@ -39,3 +53,14 @@ def test_noise_row_values():
     assert vals["f_nz_legal_moved"] == 1
     assert vals["f_nz_edit1_tokens"] == 1
     assert vals["f_nz_name_generic_only"] == 0  # 'vlley'/'valley' also differ
+    assert vals["f_nz_num_conflict"] == 0  # digit deletion is noise, not a conflict
+    assert vals["f_acronym"] == 0
+
+
+def test_num_conflict():
+    def conflict(x, y):
+        return dict(zip(NOISE_FEATS, noise_row(_row(nums=x), _row(nums=y), set())))["f_nz_num_conflict"]
+    assert conflict("719 12", "54 12") == 1
+    assert conflict("719", "719") == 0
+    assert conflict("719", "19") == 0
+    assert conflict("719", "") == 0

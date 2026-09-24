@@ -9,10 +9,8 @@ from rapidfuzz import fuzz, process
 from rapidfuzz.distance import JaroWinkler
 
 from . import config
-from .noise import NOISE_FEATS, noise_row
+from .noise import ADDR_ALPHA, CORE, LEGAL, NOISE_FEATS, NUMS, ROW_COLS, noise_row
 
-ROW_COLS = ["name_core", "legal", "legal_first", "nums", "postcode", "addr_alpha",
-            "name_norm", "name_raw", "addr_norm", "addr_raw"]
 FUZZ = [
     ("name_norm", "ratio", fuzz.ratio), ("name_norm", "tset", fuzz.token_set_ratio),
     ("name_norm", "tsort", fuzz.token_sort_ratio), ("name_norm", "partial", fuzz.partial_ratio),
@@ -22,8 +20,7 @@ FUZZ = [
     ("addr_norm", "ratio", fuzz.ratio), ("addr_norm", "tset", fuzz.token_set_ratio),
     ("addr_norm", "partial", fuzz.partial_ratio), ("addr_alpha", "tset", fuzz.token_set_ratio),
 ]
-PY_FEATS = ["f_name_jac", "f_addr_jac", "f_nums_jac", "f_num1_eq", "f_pc_eq", "f_pc_missing",
-            "f_legal_code", "f_core_len_diff"] + NOISE_FEATS
+PY_FEATS = ["f_name_jac", "f_addr_jac", "f_nums_jac", "f_num1_eq", "f_legal_code", "f_core_len_diff"] + NOISE_FEATS
 
 
 def add_frequency_columns(s1n, pooln):
@@ -51,17 +48,15 @@ def _py_chunk(A, B, generic):
     """Set/number/legal features plus noise features for a chunk of row-tuple pairs."""
     out = np.zeros((len(A), len(PY_FEATS)), np.float32)
     for i, (a, b) in enumerate(zip(A, B)):
-        ca, cb = set(a[0].split()), set(b[0].split())
-        na, nb = a[3].split(), b[3].split()
+        ca, cb = set(a[CORE].split()), set(b[CORE].split())
+        na, nb = a[NUMS].split(), b[NUMS].split()
         out[i, 0] = _jac(ca, cb)
-        out[i, 1] = _jac(set(a[5].split()), set(b[5].split()))
+        out[i, 1] = _jac(set(a[ADDR_ALPHA].split()), set(b[ADDR_ALPHA].split()))
         out[i, 2] = _jac(set(na), set(nb))
         out[i, 3] = float(na[0] == nb[0]) if (na and nb) else -1.0
-        out[i, 4] = float(bool(a[4]) and a[4] == b[4])
-        out[i, 5] = float(not a[4] or not b[4])
-        out[i, 6] = _legal_code(a[1], b[1])
-        out[i, 7] = abs(len(ca) - len(cb))
-        out[i, 8:] = noise_row(a, b, generic)
+        out[i, 4] = _legal_code(a[LEGAL], b[LEGAL])
+        out[i, 5] = abs(len(ca) - len(cb))
+        out[i, 6:] = noise_row(a, b, generic)
     return out
 
 
