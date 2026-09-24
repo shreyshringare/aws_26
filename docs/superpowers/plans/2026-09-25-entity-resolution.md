@@ -1854,7 +1854,7 @@ git add -A && git commit -m "sub: E03 stage-1 full submission" && git tag sub-d1
 - Modify: `src/context.py` (replace stub)
 - Test: `tests/test_context.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 ```python
 """Tests for stage-2 context and triangle features."""
@@ -1882,12 +1882,12 @@ def test_stage2_features():
     assert r.loc[(0, 1), "f2_sim_top_other_src"] > 0.8
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `python -m pytest -q tests/test_context.py`
 Expected: FAIL (`ImportError`)
 
-- [ ] **Step 3: Implement `src/context.py`**
+- [x] **Step 3: Implement `src/context.py`**
 
 ```python
 """Stage-2 features from stage-1 scores (differentiator #1a).
@@ -1967,12 +1967,12 @@ def add_stage2_features(df, pooln, topm=None, pmin=None):
     return triangle_features(df, pooln, topm, pmin)
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `python -m pytest -q tests/test_context.py`
 Expected: `1 passed`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/context.py tests/test_context.py && git commit -m "feat: stage-2 context, competition and triangle-support features"
