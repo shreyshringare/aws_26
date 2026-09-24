@@ -17,10 +17,13 @@ TRAIN_FRAC = 0.15  # share of train S1 entities used to fit models in full runs
 
 # --- blocking -----------------------------------------------------------------
 BLOCK_MAX_DF = 2000   # drop keys whose pool document frequency exceeds this
-BLOCK_TOPK = 40       # candidates kept per S1 entity
-BLOCK_CHUNK = 4000    # S1 rows per sparse-matmul chunk
+BLOCK_CHUNK = 2000    # S1 rows per sparse-matmul chunk (each worker holds one product per channel)
 BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.5, "np": 0.5, "nc": 1.5, "n2": 0.7,
            "a": 0.6, "ab": 1.5, "p": 1.0}
+NAME_FAMS = ("n", "nb", "nm", "np", "nc", "n2")
+ADDR_FAMS = ("a", "ab", "p")
+# {channel: (key families, top-k kept per S1)}; candidates = union over channels.
+BLOCK_CHANNELS = {"name": (NAME_FAMS, 20), "addr": (ADDR_FAMS, 20), "all": (NAME_FAMS + ADDR_FAMS, 30)}
 
 # --- model --------------------------------------------------------------------
 N_FOLDS = 5

@@ -1,7 +1,8 @@
 """Tests for key generation and per-country IDF blocking."""
 import pandas as pd
 
-from src.blocking import generate_candidates, record_keys
+from src.blocking import FAMS, generate_candidates, record_keys
+from src.config import ADDR_FAMS, NAME_FAMS
 from src.normalize import normalize_frame
 
 
@@ -44,3 +45,20 @@ def test_generate_candidates_finds_match_and_respects_country():
     assert top == {0: 0, 1: 1, 2: 2}
     fr = c[c.s1_rid == 2]
     assert set(fr.pool_rid) == {2}  # US record S2-5 never offered to a France S1
+
+
+def test_name_channel_keeps_name_only_match_crowded_out_by_address():
+    s1 = normalize_frame(_frame([["S1-1", "Smart Marketing Ltd", "12 Main Street, Springfield, IL", "US"]]), None)
+    pool = normalize_frame(_frame([
+        ["S2-1", "Smart Marketing Solutions", "12 Main St, Springfield, Illinois", "US"],
+        ["S3-2", "Smart Marketing Limited", "", "US"],
+    ]), None)
+    single = generate_candidates(s1, pool, channels={"all": (FAMS, 1)}, max_df=10, chunk=1, n_jobs=1)
+    assert list(single.pool_rid) == [0]  # the address-sharing sister business wins the joint score
+    multi = generate_candidates(s1, pool, channels={"name": (NAME_FAMS, 1), "addr": (ADDR_FAMS, 1),
+                                                    "all": (FAMS, 1)}, max_df=10, chunk=1, n_jobs=1)
+    assert set(multi.pool_rid) == {0, 1}
+    assert list(multi.columns) == ["s1_rid", "pool_rid", "block_score", "block_rank", "score_name", "score_addr"]
+    r = multi.set_index("pool_rid")
+    assert r.loc[1, "score_name"] > r.loc[0, "score_name"] and r.loc[1, "score_addr"] == 0
+    assert (r.block_rank == 0).all()

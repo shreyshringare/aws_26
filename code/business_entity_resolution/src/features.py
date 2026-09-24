@@ -87,6 +87,8 @@ def _features_chunk(c, s1n, pooln, generic, n_jobs):
         out[name] = py[:, j]
     out["f_block_score"] = c["block_score"].to_numpy(np.float32)
     out["f_block_rank"] = c["block_rank"].to_numpy(np.float32)
+    for col in c.columns[c.columns.str.startswith("score_")]:  # per-channel blocking scores
+        out[f"f_{col}"] = c[col].to_numpy(np.float32)
     out["f_is_s3"] = pooln["is_s3"].to_numpy()[ib].astype(np.float32)
     for side, frame, idx in (("a", s1n, ia), ("b", pooln, ib)):
         out[f"f_freq_{side}"] = frame["name_freq"].to_numpy()[idx].astype(np.float32)
