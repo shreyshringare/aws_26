@@ -53,6 +53,12 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 - [ ] SageMaker instance stopped if nothing is running
 - [ ] Current state table updated; shift entry written below
 
+## Queued work derived from EDA v2 (docs/EDA.md §G)
+1. **Data picking** (new `src/sampling.py`): dev/train entities stratified by country × match-count bin (0 / 1–2 / 3–4 / 5+); training rows = all positives + all negatives in top-10 block ranks + 25% of the rest (weight 4); OOF still scores all rows. Also: skip the validator call when `utils/` is absent (self-contained zip).
+2. **Normalization v2** (bump cache tag to v2): split aliases (`dba|aka|fka|formerly|formerly known as|nee|doing business as`) into a `name_alias` column and score the best of name vs alias; French `etablissements/ets` as a legal-like token; street key skips `bis/ter`; generic vocab requires ≥ 3-char tokens; seed French generic words (ecole, amicale, groupe, association…) only if learned vocab misses them.
+3. **Features**: drop postcode features (dead: ≤ 1.9% coverage); add address-shape features (addr token count, landmark flag already exists); alias-aware name similarity.
+4. **France risk**: 45% of France name tokens unseen in train (the US↔IN proxy only shows 28–36%) → prefer char-level similarity; rarity/frequency stats computed on the test pool per country (already the case).
+
 ## Shift entries (newest first)
 ### 2026-09-25 — planning
 - Done: EDA (singletons 5.6%, one-to-one exact, 0 cross-country pairs, France = 15% of test S1),
