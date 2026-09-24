@@ -30,11 +30,11 @@ ADDR_CANON = {
     "boulevard": "bd", "blvd": "bd", "drive": "dr", "lane": "ln", "court": "ct",
     "place": "pl", "parkway": "pkwy", "highway": "hwy", "circle": "cir", "trail": "trl",
     "terrace": "ter", "square": "sq", "apartment": "apt", "suite": "ste", "sainte": "ste",
-    "floor": "fl", "building": "bldg", "north": "n", "south": "s", "east": "e", "west": "w",
-    "rue": "r", "allee": "all", "impasse": "imp", "chemin": "ch", "route": "rte",
-    "faubourg": "fbg", "sector": "sec",
+    "floor": "fl", "flr": "fl", "building": "bldg", "north": "n", "south": "s", "east": "e",
+    "west": "w", "rue": "r", "allee": "all", "impasse": "imp", "chemin": "ch", "route": "rte",
+    "faubourg": "fbg", "sector": "sec", "township": "twp",
 }
-ADDR_DROP = {"no", "hno", "h", "door", "unit", "number", "num", "null", "none", "nan", "po", "box"}
+ADDR_DROP = {"no", "hno", "hn", "h", "door", "unit", "number", "num", "null", "none", "nan", "po", "box"}
 
 US_STATES = {
     "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",

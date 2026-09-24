@@ -38,6 +38,15 @@ def test_address_french_and_landmark_and_pin():
     assert a[5] == "near sbi atm" and a[3] == "411001" and "sbi" not in a[0]
 
 
+def test_address_india_house_number_and_floor_and_township():
+    a = normalize_address("HN 753 E-1, Bharat Nagar")
+    assert "hn" not in a[0].split()
+    b = normalize_address("F-13 Kadam Chawl 1st Flr Bhuleshwar")
+    assert "fl" in b[0].split() and "flr" not in b[0].split()
+    c = normalize_address("3170 Exacta Lane, Raleigh Township, NC")
+    assert "twp" in c[0].split() and "township" not in c[0].split()
+
+
 def test_split_raw_keeps_devanagari_words():
     assert split_raw("मॉडर्न फाउंडेशन") == ["मॉडर्न", "फाउंडेशन"]
 
