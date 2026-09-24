@@ -22,7 +22,7 @@ macro F0.5 per S1 entity (private leaderboard decides). Success criteria:
 | Unmatched pool records | ~26% | distractors; need calibrated probabilities |
 | Native-script names | 11–15% of S2/S3 names | transliteration table learned from train pairs |
 | Test France share | 259k of 1.73M S1 (15%) | country-agnostic features; FR abbreviation dictionary |
-| Observed noise | house-number digit drop (3424→424), suffix moved to front, generic words added, accents, TX↔Texas, typos, empty address, trade-name swap | noise-channel features (§6.2) |
+| Observed noise | house-number digit drop (3424→424), suffix moved to front, generic words added, accents, TX↔Texas, typos, empty address, trade-name swap | noise-channel features (§7.2) |
 
 ## 3. Compliance constraints (non-negotiable)
 - Only files under `dataset/`. Hand-written dictionaries are allowed and are listed in the methodology appendix.
