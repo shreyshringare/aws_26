@@ -24,14 +24,32 @@ code/business_entity_resolution/
   src/blocking.py      candidate generation + blocking_report
   src/features.py      pair features
   src/model.py         GroupKFold LightGBM, OOF predictions, two-stage context features
-  src/decide.py        threshold, empty gate, one-to-one assignment, threshold tuning
+  src/translit.py      learned native-script -> Latin token table (train pairs only)
+  src/noise.py         noise-channel features + learned generic-word vocab
+  src/context.py       stage-2 group / competition / triangle-support features
+  src/decide.py        calibration, one-to-one, threshold + expected-F0.5 decoders, tuning
   src/evaluate.py      exact macro F0.5 scorer + breakdowns
   src/run_pipeline.py  end-to-end entry point
+  src/eda.py           EDA script
+  scripts/             make_empty_submission.py, make_zip.py (tooling, not zipped)
   tests/               pytest
   README.md, requirements.txt
 Documentation_template.md         methodology write-up
+HANDOFF.md                        shift relay state (read second, update every shift)
+docs/superpowers/specs/           design spec
+docs/superpowers/plans/           implementation plan (task checklist)
 ```
 This CLAUDE.md lives in `student_resource/` and is not part of the submission zip.
+
+## Session start (every shift)
+1. Read this file, then `HANDOFF.md`, then the next unchecked task in `docs/superpowers/plans/2026-09-25-entity-resolution.md`.
+2. `git pull`, then `python -m pytest -q tests` (from `code/business_entity_resolution/`).
+3. Work task by task, commit after each, and tick the plan checkboxes.
+
+## AWS
+* Each teammate has their own AWS account and $200 credits; spend your own on your shift. Region us-east-1 for everything.
+* Full runs need ~100 GB RAM: Notebook Instance `ml.r5.4xlarge` (the free-trial `ml.t3.medium` is too small). Stop the instance when idle.
+* Share `cache/` and models across accounts via an S3 bucket policy or `aws s3 presign`. Default S3 encryption only.
 
 ## Commands
 ```bash
@@ -106,7 +124,8 @@ Sanity check: pred {a,b,x}, true {a,b} -> 0.714.
 * Do not change output ordering or headers.
 
 ## Current status (update as you go)
-* [ ] EDA answers: singleton rate = ?, one-to-one holds = ?, cross-country matches = ?
+* [x] EDA answers: singleton rate = 5.6%, one-to-one holds = yes (0 of 7.6M pool ids shared), cross-country matches = 0
+* [x] Design spec + implementation plan written (docs/superpowers/)
 * [ ] E00 all-empty submission: public LB = ?
 * [ ] Fuzzy baseline: local = ?, public = ?
 * [ ] LightGBM stage 1 / stage 2

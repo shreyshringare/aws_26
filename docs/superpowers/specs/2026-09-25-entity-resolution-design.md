@@ -53,8 +53,8 @@ The modules are the ones listed in CLAUDE.md, plus `translit.py` (learned table)
 
 ## 5. Normalization (`normalize.py`, `translit.py`)
 - **Common cleaning:** NFKC, then transliterate non-ASCII tokens (learned table first, `unidecode` fallback), lowercase, delete dots (`L.L.C.`→`llc`, `R.`→`r`), `&`→`and`, remaining punctuation → space, collapse spaces, strip junk tokens (`--`, `<<`, `null`).
-- **Name:** `legal` holds the canonical legal tokens found anywhere in the name (inc/incorporated, llc, corp→corporation, co→company, ltd→limited, pvt→private, llp, plc, sarl, sas, sasu, sa, eurl, sci, snc, opc…). `name_core` = the name without legal tokens and stopwords (and, the, of, de, du, des, la, le, les, et).
-- **Address:** token dictionary (rd→road, st→street, ave/av→avenue, blvd/bd→boulevard, dr→drive, ln→lane, ct→court, pkwy→parkway, hwy→highway, r→rue, all→allee, imp→impasse, ch→chemin, apt→apartment, ste→suite, fl→floor, no/hno/h/door/unit dropped). US state full name → 2-letter code. Landmark phrases (`near|opp|behind|beside …`) are moved to a separate field. `nums` = numeric tokens in order. `postcode` = the first 5–6 digit token.
+- **Name:** `legal` holds the canonical (short-form) legal tokens found anywhere in the name (incorporated→inc, corporation→corp, company→co, limited→ltd, private→pvt, llc, llp, plc, sarl, sas, sasu, sa, eurl, sci, snc, opc…). `name_core` = the name without legal tokens and stopwords (and, the, of, de, du, des, la, le, les, et).
+- **Address:** token dictionary canonicalising to short forms on both sides (street/saint→st, road→rd, avenue/ave→av, boulevard/blvd→bd, drive→dr, lane→ln, parkway→pkwy, rue→r, allee→all, impasse→imp, chemin→ch, apartment→apt, suite/sainte→ste; no/hno/h/door/unit/po/box dropped). US state full name → 2-letter code. Landmark phrases (`near|opp|behind|beside …`) are moved to a separate field. `nums` = numeric tokens in order. `postcode` = the first 5–6 digit token.
 - **Learned transliteration (`translit.py`):** from train matched pairs where the pool name or address is non-Latin and S1 is Latin, align tokens by position when the token counts are equal. Keep the majority Latin token per native token when support ≥ 3 and share ≥ 0.6. The table is fitted on train only and saved as a TSV artifact.
 
 ## 6. Blocking (`blocking.py`)
@@ -78,14 +78,14 @@ Features that say *why* two strings differ, learned from the noise operators see
 - `name_diff_generic_only`: the symmetric difference of name_core tokens is entirely made of "generic add-on" words. That vocabulary is learned from train: tokens that are over-represented in pool names relative to their matched S1 names (e.g. services, care, company, group).
 - `name_legal_moved`: the legal tokens are equal but in a different position.
 - `name_edit1_tokens`: count of token pairs at Damerau distance 1 (typos, "Vlley"/"Valley").
-- `state_expanded`: states are equal after mapping.
+- `addr_norm_only`: addresses equal after normalization but different raw (state expansion, abbreviations, case).
 - `addr_only_match`: address strongly equal while names share no tokens (the trade-name swap case).
 - `accent_only_diff`: equal after stripping accents but different before.
 
 ### 7.3 Stage-1 model
 LightGBM binary (config `LGB_PARAMS`), 5-fold GroupKFold by S1 entity, early stopping on the fold's validation set. Produces OOF `p1` for train and the fold-averaged `p1` for test.
 
-### 7.4 Stage-2 context + triangle features — differentiator #1a
+### 7.4 Stage-2 context + triangle features (`context.py`) — differentiator #1a
 Computed from OOF `p1` only:
 - **Group context:** rank of p1 in the S1 group, gap to the group max, count of p1 > 0.5 in the group, group size.
 - **Competition:** the candidate's best p1 against any *other* S1, and the gap to it (the one-to-one signal).
