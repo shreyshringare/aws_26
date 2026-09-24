@@ -135,7 +135,10 @@ Every stage caches parquet, so a later shift resumes without recomputing.
 | Zip structure: `output/`, `code/business_entity_resolution/{src,README,requirements}`, doc (PS) | `scripts/make_zip.py` (Phase 5); README + pinned requirements exist | ⏳ planned |
 | Methodology doc: methodology, blocking, model + features, other (PS + guidelines) | `Documentation_template.md` filled in Phase 5: core ≤ 2 pages (guidelines), details in the Appendix (PS allows unlimited) | ⏳ planned |
 | Source code with comments describing functions (guidelines) | docstring on every function (enforced in the plan) | ✅ so far |
-| ≤ 5 uploads/day, keep version history (guidelines) | only the shift driver uploads; git tag per upload; log.csv | ✅ process |
+| ≤ 5 uploads/day, keep version history (guidelines) | only the shift driver uploads; `scripts/archive_submission.py` stores every uploaded file (gzipped) + commit/score metadata and git-tags the commit; log.csv | ✅ process + script |
+| Self-contained reproduction: "using only what is in this folder" (PS) | pipeline must not depend on files outside `code/business_entity_resolution/` except `dataset/`; validator call becomes optional when `utils/` is absent | ⏳ fix queued (with data-picking change) |
+| "Source code used for experiments, training and inference" (guidelines) | EDA (`src/eda.py`), training and inference all live in `src/` and ship in the zip; the experiment log goes into the doc appendix | ✅ |
+| Tip: country-specific address patterns (PS) | handled by universal dictionaries (US states, India HN/PIN, French rue/allée/impasse), not by a country feature | ✅ |
 | One login per participant, desktop only (guidelines) | human process: one portal login per person | ℹ️ team to follow |
 | Dataset fit | every design choice traces to an EDA number in §2 | ✅ |
 
