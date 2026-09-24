@@ -40,6 +40,12 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 | S10 | D3 12–18 |  | final full run, final selection (OOF + transfer) |
 | S11 | D3 18–24 |  | Tasks 19–21: zip, methodology doc, final upload |
 
+## Upload checklist (shift driver only; guidelines: max 5/day, keep version history)
+- [ ] Validator PASS (from `student_resource/`)
+- [ ] Upload `output/matching_results.tsv` in the portal (one login per person, desktop only)
+- [ ] `python scripts/archive_submission.py --tag sub-dN-MM --exp-id EXX --public-lb <score>` (archives files + meta, git-tags the commit)
+- [ ] Record `public_lb` in `experiments/log.csv` and in the Current state table; sync `submissions/` to S3
+
 ## End-of-shift checklist
 - [ ] Code committed and pushed; experiment rows appended to `experiments/log.csv`
 - [ ] Any long job started *before* leaving (note it above)
