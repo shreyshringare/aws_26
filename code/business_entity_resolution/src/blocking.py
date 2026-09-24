@@ -13,7 +13,7 @@ from joblib import Parallel, delayed
 from . import config
 from .normalize import phonetic
 
-FAMS = config.NAME_FAMS + config.ADDR_FAMS
+FAMS = config.NAME_FAMS + config.ADDR_FAMS + config.CROSS_FAMS
 FAM_IDX = {f: i for i, f in enumerate(FAMS)}
 CAND_COLS = ["s1_rid", "pool_rid", "block_score", "block_rank"]
 PAIR_TOKS = 6  # only the first tokens of a name form unordered pairs (n2 grows quadratically)
@@ -39,14 +39,23 @@ def name_keys(toks):
     return keys
 
 
-def record_keys(name_core, addr_alpha, street_key, postcode):
+def cross_keys(toks, addr_toks):
+    """na: first name-core tokens x first distinct address alpha tokens (both len >= 2).
+
+    A common name token or a common place token alone exceeds BLOCK_MAX_DF; their pair is selective.
+    """
+    names = [t for t in toks if len(t) >= 2][:config.NA_NAME_TOKS]
+    places = list(dict.fromkeys(t for t in addr_toks if len(t) >= 2))[:config.NA_ADDR_TOKS]
+    return {("na", f"{n}@{p}") for n in names for p in places}
+
+
+def record_keys(name_core, addr_alpha, street_key):
     """Return the set of (family, key) blocking keys for one normalized record."""
-    keys = name_keys(name_core.split())
-    keys |= {("a", t) for t in addr_alpha.split()}
+    toks, addr_toks = name_core.split(), addr_alpha.split()
+    keys = name_keys(toks) | cross_keys(toks, addr_toks)
+    keys |= {("a", t) for t in addr_toks}
     if street_key:
         keys.add(("ab", street_key))
-    if postcode:
-        keys.add(("p", postcode))
     return keys
 
 
@@ -69,7 +78,7 @@ def _hash_chunk(cols, offset):
 
 def hash_frame(df, n_jobs=1, chunk=200_000):
     """Hash all blocking keys of a normalized frame in parallel chunks."""
-    cols = [df[c].tolist() for c in ("name_core", "addr_alpha", "street_key", "postcode")]
+    cols = [df[c].tolist() for c in ("name_core", "addr_alpha", "street_key")]
     parts = Parallel(n_jobs=n_jobs)(
         delayed(_hash_chunk)([c[i:i + chunk] for c in cols], i) for i in range(0, len(df), chunk)
     )

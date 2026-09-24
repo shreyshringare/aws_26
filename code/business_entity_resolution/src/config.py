@@ -18,12 +18,18 @@ TRAIN_FRAC = 0.15  # share of train S1 entities used to fit models in full runs
 # --- blocking -----------------------------------------------------------------
 BLOCK_MAX_DF = 2000   # drop keys whose pool document frequency exceeds this
 BLOCK_CHUNK = 2000    # S1 rows per sparse-matmul chunk (each worker holds one product per channel)
-BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.5, "np": 0.5, "nc": 1.5, "n2": 0.7,
-           "a": 0.6, "ab": 1.5, "p": 1.0}
+# Weights follow EDA §G.8: `a`/`ab` carry unique recall, `nm` is usable on few pairs.
+# No postcode family: postcodes are found on <= 1.9% of records (EDA §G.6).
+BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.3, "np": 0.5, "nc": 1.5, "n2": 0.7,
+           "a": 1.0, "ab": 2.5, "na": 1.0}
 NAME_FAMS = ("n", "nb", "nm", "np", "nc", "n2")
-ADDR_FAMS = ("a", "ab", "p")
+ADDR_FAMS = ("a", "ab")
+CROSS_FAMS = ("na",)  # name-core token x address token: a common name located by a common place
 # {channel: (key families, top-k kept per S1)}; candidates = union over channels.
-BLOCK_CHANNELS = {"name": (NAME_FAMS, 20), "addr": (ADDR_FAMS, 20), "all": (NAME_FAMS + ADDR_FAMS, 30)}
+BLOCK_CHANNELS = {"name": (NAME_FAMS + CROSS_FAMS, 20), "addr": (ADDR_FAMS, 20),
+                  "all": (NAME_FAMS + ADDR_FAMS + CROSS_FAMS, 30)}
+NA_NAME_TOKS = 3  # first name-core tokens crossed ...
+NA_ADDR_TOKS = 6  # ... with up to this many address alpha tokens (both len >= 2)
 
 # --- model --------------------------------------------------------------------
 N_FOLDS = 5

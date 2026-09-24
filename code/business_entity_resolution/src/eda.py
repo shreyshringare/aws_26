@@ -359,8 +359,8 @@ def pair_key_sharing(a, b, country, lookup=None, max_df=2000):
     fams = blocking.FAMS
     rows = []
     for ra, rb, c in zip(a.itertuples(index=False), b.itertuples(index=False), country):
-        ka = blocking.record_keys(ra.name_core, ra.addr_alpha, ra.street_key, ra.postcode)
-        kb = blocking.record_keys(rb.name_core, rb.addr_alpha, rb.street_key, rb.postcode)
+        ka = blocking.record_keys(ra.name_core, ra.addr_alpha, ra.street_key)
+        kb = blocking.record_keys(rb.name_core, rb.addr_alpha, rb.street_key)
         shared = ka & kb
         r = {f: False for f in fams}
         usable = {f: False for f in fams}
@@ -632,7 +632,7 @@ def main(argv=None):
             f"### F1. Pool document frequency per key family ({frac:.0%} pool sample per country, df scaled "
             "by 1/frac; blocking drops keys with df > 2000)\n",
             "Families: n = name token, nb = adjacent name-token bigram, nm = sorted initials, a = address "
-            "alpha token, ab = house number + street word, p = postcode.\n",
+            "alpha token, ab = house number + street word, na = name token x address token.\n",
             md_table(kstats), "",
             f"### F2. Matched pairs sharing ≥1 key per family ({len(a):,} pairs)\n",
             "`usable` = shared key with estimated df ≤ 2000 (i.e. survives the blocking cut); "
