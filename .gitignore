@@ -1,0 +1,9 @@
+dataset/
+output/
+**/cache/
+eda_out.txt
+*.zip
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
