@@ -228,7 +228,6 @@ def main(argv=None):
     s1n, pooln = load_split_norm(args.data, "train", table)
     gt = io_utils.load_ground_truth(args.data)
     pos_all = gt_rid_pairs(gt, s1n, pooln)
-    generic = get_generic_vocab(s1n, pooln, pos_all)
 
     frac = args.frac if args.frac is not None else (config.DEV_FRAC if args.eval_only else config.TRAIN_FRAC)
     rids = sample_s1(s1n, frac)
@@ -243,6 +242,8 @@ def main(argv=None):
     if args.stop_after == "blocking":
         append_log(row)
         return
+
+    generic = get_generic_vocab(s1n, pooln, pos_all)
 
     feats = cached_frame(f"feats1_train_{frac}",
                          lambda: features.build_features(cands, s1n, pooln, generic))
