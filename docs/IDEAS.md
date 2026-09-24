@@ -90,6 +90,8 @@ One experiment per idea, logged in `experiments/log.csv`. Keep an idea only if d
 | Address-shape features (token count, has landmark, has number) | ⏭ | US vs India differ strongly; shape transfers, country doesn't | transfer holds |
 | Name-frequency / ambiguity features (how many S1s share this name) | ⏭ | 48–54% of S1 share their exact name | dev ↑ |
 | Phonetic-skeleton similarity feature | 🧪 | extends script-agnostic matching into scoring | native-script errors remain |
+| **Number-conflict feature** (both sides have a house number, it differs, and it isn't a dropped digit) | ⏭ | contradiction signal: same name + different house number = likely a different branch or business | dev ↑ |
+| **Acronym match** (initials of one name == a token of the other: "M E" ↔ "Mahalakshmi Engineering") | ⏭ | abbreviated names; also consider an initials-string blocking key | dev ↑ / recall ↑ |
 | Char n-gram TF-IDF cosine (name, address) | 🧪 | robust to typos and unseen FR words | France proxy ↑ |
 | Small multilingual embedding similarity (multilingual-e5-small, MIT) | 🧪 | semantic + cross-script; needs GPU/time | only if CPU budget allows and transfer ↑ |
 
@@ -118,6 +120,9 @@ One experiment per idea, logged in `experiments/log.csv`. Keep an idea only if d
 | Expected-F0.5 subset selection (Monte Carlo, includes "none") | ✅ | differentiator #1b | beats threshold on OOF |
 | Threshold + empty-gate baseline | ✅ | fallback | — |
 | Joint S2/S3 cluster decision (pick consistent clusters, not just top-k) | 🧪 | uses S2↔S3 similarity at decision time | stage-2 triangle features aren't enough |
+| Segment thresholds by country-agnostic segments (S2 vs S3, missing address, native script); **not** per country (France untunable) | 🧪 | noise differs by segment | beats the single decoder on OOF |
+| **Error-analysis taxonomy** after each dev run (~200 errors → blocking miss / abbreviation / address norm / model FP / threshold / other) | ⏭ | attack the biggest bucket first | — |
+| Recall-vs-K curve per channel (K = 20…100) | ⏭ | pick K by the marginal recall per candidate | — |
 | Cardinality prior (predicted number of matches per business) | 🧪 | EDA shows a tight count distribution (p90 = 6) | EF0.5 over/under-selects |
 
 ### B.7 France-specific (unseen country)
