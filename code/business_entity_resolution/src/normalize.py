@@ -85,6 +85,26 @@ def to_ascii(tok):
     return re.sub(r"[^a-z0-9]+", " ", unidecode(tok).lower()).strip()
 
 
+_PHON_MAP = str.maketrans({"c": "k", "q": "k", "x": "ks", "w": "v", "z": "s"})
+_H_AFTER_CONS = re.compile(r"(?<=[bdfgjklmnprstv])h")
+_VOWELS = re.compile(r"[aeiouy]")
+_REPEAT = re.compile(r"(.)\1+")
+
+
+@lru_cache(maxsize=1 << 20)
+def phonetic(tok):
+    """Language-agnostic consonant skeleton of an ASCII token (bridges transliteration variants).
+
+    ph->f, c/q->k, x->ks, w->v, z->s; 'h' after a consonant dropped (kh, th, sh, bh...);
+    vowels (incl. y) removed except the first character; repeated letters collapsed.
+    E.g. unidecode("परफेक्ट") = "prphektt" and "perfect" both give "prfkt".
+    """
+    s = tok.lower().replace("ph", "f").translate(_PHON_MAP)
+    s = _H_AFTER_CONS.sub("", s)
+    s = s[:1] + _VOWELS.sub("", s[1:])
+    return _REPEAT.sub(r"\1", s)
+
+
 def tokens(text, table=None):
     """Normalized ASCII tokens: learned transliteration table first, unidecode fallback, junk removed."""
     out = []

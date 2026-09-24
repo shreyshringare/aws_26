@@ -12,18 +12,37 @@ from joblib import Parallel, delayed
 
 from . import config
 
-FAMS = ("n", "nb", "nm", "a", "ab", "p")
+from .normalize import phonetic
+
+FAMS = ("n", "nb", "nm", "np", "nc", "n2", "a", "ab", "p")
 FAM_IDX = {f: i for i, f in enumerate(FAMS)}
 CAND_COLS = ["s1_rid", "pool_rid", "block_score", "block_rank"]
+PAIR_TOKS = 6  # only the first tokens of a name form unordered pairs (n2 grows quadratically)
+
+
+def name_keys(toks):
+    """Name-side (family, key) pairs.
+
+    n: tokens; nb: adjacent bigrams; nm: sorted initials; np: phonetic skeletons
+    (transliteration variants); nc: tokens concatenated (domain-style names);
+    n2: unordered token pairs (reorders and inserted words).
+    """
+    keys = {("n", t) for t in toks}
+    keys |= {("nb", f"{a}_{b}") for a, b in zip(toks, toks[1:])}
+    keys |= {("np", phonetic(t)) for t in toks if len(t) >= 2}
+    head = sorted(set(toks[:PAIR_TOKS]))
+    keys |= {("n2", f"{a}_{b}") for i, a in enumerate(head) for b in head[i + 1:]}
+    if toks:
+        keys.add(("nm", "".join(sorted(t[0] for t in toks))))
+    joined = "".join(toks)
+    if len(toks) >= 2 or len(joined) >= 6:
+        keys.add(("nc", joined))
+    return keys
 
 
 def record_keys(name_core, addr_alpha, street_key, postcode):
     """Return the set of (family, key) blocking keys for one normalized record."""
-    toks = name_core.split()
-    keys = {("n", t) for t in toks}
-    keys |= {("nb", f"{a}_{b}") for a, b in zip(toks, toks[1:])}
-    if toks:
-        keys.add(("nm", "".join(sorted(t[0] for t in toks))))
+    keys = name_keys(name_core.split())
     keys |= {("a", t) for t in addr_alpha.split()}
     if street_key:
         keys.add(("ab", street_key))

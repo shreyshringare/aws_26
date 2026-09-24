@@ -19,7 +19,8 @@ TRAIN_FRAC = 0.15  # share of train S1 entities used to fit models in full runs
 BLOCK_MAX_DF = 2000   # drop keys whose pool document frequency exceeds this
 BLOCK_TOPK = 40       # candidates kept per S1 entity
 BLOCK_CHUNK = 4000    # S1 rows per sparse-matmul chunk
-BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.5, "a": 0.6, "ab": 1.5, "p": 1.0}
+BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.5, "np": 0.5, "nc": 1.5, "n2": 0.7,
+           "a": 0.6, "ab": 1.5, "p": 1.0}
 
 # --- model --------------------------------------------------------------------
 N_FOLDS = 5

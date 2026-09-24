@@ -1,7 +1,7 @@
 """Tests for name/address normalization dictionaries and rules."""
 import pandas as pd
 
-from src.normalize import normalize_address, normalize_frame, normalize_name, split_raw
+from src.normalize import normalize_address, normalize_frame, normalize_name, phonetic, split_raw, to_ascii
 
 
 def test_name_legal_split_and_dots():
@@ -57,3 +57,11 @@ def test_normalize_frame_columns():
     out = normalize_frame(df, None, n_jobs=1)
     assert out.loc[0, "is_s3"] == 1 and out.loc[0, "script_flag"] == 1
     assert out.loc[0, "addr_norm"] == "" and out.loc[0, "rid"] == 0
+
+
+def test_phonetic_skeleton_bridges_transliteration():
+    for native, latin in [("मार्केटिंग", "marketing"), ("लिमिटेड", "limited"), ("परफेक्ट", "perfect"),
+                          ("సిస్టమ్స్", "systems")]:
+        assert phonetic(to_ascii(native)) == phonetic(latin)
+    assert phonetic("Philip") == phonetic("filip") == "flp"
+    assert phonetic("khanna") == "kn" and phonetic("aqua") == "ak" and phonetic("box12") == "bks12"

@@ -12,8 +12,19 @@ def _frame(rows):
 def test_record_keys_families():
     keys = record_keys("peak highland fast", "veterans pkwy marshfield wi", "3029_veterans", "")
     fams = {f for f, _ in keys}
-    assert fams == {"n", "nb", "nm", "a", "ab"}
+    assert fams == {"n", "nb", "nm", "np", "nc", "n2", "a", "ab"}
     assert ("nm", "fhp") in keys and ("ab", "3029_veterans") in keys
+    assert ("np", "hglnd") in keys and ("nc", "peakhighlandfast") in keys
+    assert {k for f, k in keys if f == "n2"} == {"highland_peak", "fast_peak", "fast_highland"}
+
+
+def test_record_keys_bridge_domains_reorders_and_scripts():
+    def fam(name, f):
+        return {k for g, k in record_keys(name, "", "", "") if g == f}
+    assert fam("nexloix advisory", "nc") == fam("nexloixadvisory", "nc") == {"nexloixadvisory"}
+    assert fam("abc", "nc") == set()
+    assert fam("great trading", "n2") & fam("great private trading", "n2") == {"great_trading"}
+    assert fam("perfect marketing", "np") == fam("prphektt maarketting", "np")
 
 
 def test_generate_candidates_finds_match_and_respects_country():
