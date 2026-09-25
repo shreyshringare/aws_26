@@ -94,6 +94,14 @@ def _features_chunk(c, s1n, pooln, generic, n_jobs):
     for col, name, scorer in FUZZ:
         out[f"f_{col}_{name}"] = process.cpdist(_take(s1n, col, ia), _take(pooln, col, ib), scorer=scorer,
                                                 workers=n_jobs, dtype=np.float32)
+    alias_a, alias_b = _take(s1n, "name_alias", ia), _take(pooln, "name_alias", ib)
+    core_a, core_b = _take(s1n, "name_core", ia), _take(pooln, "name_core", ib)
+    alias_vs_core = process.cpdist(alias_a, core_b, scorer=fuzz.token_set_ratio, workers=n_jobs, dtype=np.float32)
+    core_vs_alias = process.cpdist(core_a, alias_b, scorer=fuzz.token_set_ratio, workers=n_jobs, dtype=np.float32)
+    alias_vs_core = np.where([bool(x) for x in alias_a], alias_vs_core, 0.0)
+    core_vs_alias = np.where([bool(x) for x in alias_b], core_vs_alias, 0.0)
+    out["f_name_alias_best"] = np.maximum(out["f_name_core_tset"], np.maximum(alias_vs_core, core_vs_alias)) \
+        .astype(np.float32)
     A = list(zip(*[_take(s1n, k, ia) for k in ROW_COLS]))
     B = list(zip(*[_take(pooln, k, ib) for k in ROW_COLS]))
     step = max(1, len(A) // (n_jobs * 4) + 1)

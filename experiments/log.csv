@@ -13,3 +13,4 @@ E04,stage1 post-merge blocking (B05) + na/EDA weights + sampling + wider decoder
 E05,stage2 context+competition+triangle,0.9534,42.6,0.96519,0.97073,0.95688,0.95651,0.9657,0.88893,0.93812,,,,KEPT: beats E04 on every f05 metric (+0.00245 all); transfer drop ~0.002-0.0024 (marginally over the 0.002 rule) accepted since stage-2 is a core differentiator; decoder=ef05 tau=0.8 lam=0.0 (first time ef05 beat threshold)
 E05b,E05 rerun with stage2 feature importance dump,0.9534,42.6,0.96519,0.97073,0.95688,0.95651,0.9657,0.88893,0.93812,,,,
 E05c,E05 rerun to cache OOF scores for Prompt 7 error analysis (not a new experiment),0.9534,42.6,0.96519,0.97073,0.95688,0.95651,0.9657,0.88893,0.93812,,,,
+E0x-screen,"Prompt 7B: retrieval-evidence + ambiguity/density features, fast 0.02 preset screen",0.9532,42.6,0.96406,0.97087,0.95385,0.94645,0.9651,0.89137,0.93961,,,,

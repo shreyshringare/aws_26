@@ -55,6 +55,24 @@ def test_add_frequency_columns_adds_ambiguity_density_stats():
     assert "f_street_freq_a" in f.columns and "f_first_tok_freq_b" in f.columns and "f_s1_dup_a" in f.columns
 
 
+def test_build_features_scores_best_of_name_vs_alias():
+    # S1 uses the alias name; pool has only the main/current name -> direct core similarity is
+    # weak, but the alias-vs-core comparison should rescue it via the "best of name vs alias" feature.
+    s1 = _f([["S1-1", "Golden Gate Cafe dba Bay Diner", "5 Main St, Reno, NV", "US"]])
+    pool = _f([["S2-1", "Bay Diner", "5 Main St, Reno, NV", "US"],
+               ["S3-2", "Totally Unrelated Biz", "1 Elm St, Boise, ID", "US"]])
+    add_frequency_columns(s1, pool)
+    cands = pd.DataFrame({"s1_rid": [0, 0], "pool_rid": [0, 1],
+                          "block_score": np.float32([9, 1]), "block_rank": np.int16([0, 1]),
+                          "score_name": np.float32([6, 0]), "score_addr": np.float32([3, 0])})
+    f = build_features(cands, s1, pool, set(), n_jobs=1)
+    assert "f_name_alias_best" in f.columns
+    r = f.set_index("pool_rid")
+    assert r.loc[0, "f_name_alias_best"] > r.loc[0, "f_name_core_tset"]  # alias match rescues it
+    assert r.loc[0, "f_name_alias_best"] > 90  # "bay diner" alias vs "bay diner" pool name: near-exact
+    assert r.loc[1, "f_name_alias_best"] < 50  # neither the name nor the alias meaningfully matches
+
+
 def test_build_features_surfaces_retrieval_rank_and_n_channels_when_present():
     s1 = _f([["S1-1", "Valley Holdings Inc", "719 Mountain Road, Addison, VT", "US"]])
     pool = _f([["S3-1", "Vlley Holdings", "719 Mountain Rd, Addison, Vermont", "US"]])

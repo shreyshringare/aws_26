@@ -19,7 +19,7 @@ LEGAL = {
     "pvt": "pvt", "private": "pvt", "llp": "llp", "lp": "lp", "plc": "plc",
     "pllc": "pllc", "pc": "pc", "opc": "opc", "sarl": "sarl", "sas": "sas",
     "sasu": "sasu", "sa": "sa", "eurl": "eurl", "sci": "sci", "snc": "snc",
-    "cie": "cie", "compagnie": "cie",
+    "cie": "cie", "compagnie": "cie", "etablissements": "ets", "etablissement": "ets", "ets": "ets",
 }
 NAME_STOP = {"and", "the", "of", "de", "du", "des", "la", "le", "les", "et", "d", "l",
              "www", "com", "net", "org"}
@@ -56,6 +56,9 @@ _LANDMARK = re.compile(r"^\s*(near|nr|opp|opposite|behind|beside|besides|next to
                        re.IGNORECASE)
 _DIGITS = re.compile(r"\d+")
 _NON_LATIN = r"[^\x00-ɏ]"
+_ALIAS = re.compile(r"\b(?:dba|d/b/a|aka|a/k/a|fka|f/k/a|formerly(?:\s+known\s+as)?|nee|doing\s+business\s+as)\b",
+                    re.IGNORECASE)
+_STREET_MOD = {"bis", "ter", "quater"}  # French house-number modifiers, not part of the street name
 
 
 def _sep_table():
@@ -118,14 +121,27 @@ def tokens(text, table=None):
 
 
 def normalize_name(text, table=None):
-    """Return (name_norm, name_core, legal, legal_first) for a business name."""
-    toks = tokens(text, table)
+    """Return (name_norm, name_core, name_alias, legal, legal_first) for a business name.
+
+    An alias marker (dba/aka/fka/formerly (known as)/nee/doing business as) splits the raw text
+    into a main name and an alias name; name_alias holds the alias's core tokens (empty string
+    when no marker is present). Name features score the best of name vs alias against a candidate.
+    """
+    main_text, alias_text = text, ""
+    if text:
+        parts = _ALIAS.split(text, maxsplit=1)
+        if len(parts) > 1:
+            main_text, alias_text = parts[0], parts[1]
+    toks = tokens(main_text, table)
     legal = [LEGAL[t] for t in toks if t in LEGAL]
     core = [t for t in toks if t not in LEGAL and t not in NAME_STOP]
     if not core:
         core = [t for t in toks if t not in LEGAL] or toks
     first = int(bool(toks) and toks[0] in LEGAL)
-    return " ".join(toks), " ".join(core), " ".join(dict.fromkeys(legal)), first
+    alias_toks = tokens(alias_text, table)
+    alias_core = [t for t in alias_toks if t not in LEGAL and t not in NAME_STOP] or \
+        [t for t in alias_toks if t not in LEGAL]
+    return " ".join(toks), " ".join(core), " ".join(alias_core), " ".join(dict.fromkeys(legal)), first
 
 
 def _map_states(toks):
@@ -158,7 +174,7 @@ def normalize_address(text, table=None):
     street = ""
     for i, t in enumerate(toks):
         if any(c.isdigit() for c in t):
-            nxt = next((u for u in toks[i + 1:] if u.isalpha() and len(u) > 1), "")
+            nxt = next((u for u in toks[i + 1:] if u.isalpha() and len(u) > 1 and u not in _STREET_MOD), "")
             if nxt:
                 street = f"{_DIGITS.findall(t)[0]}_{nxt}"
                 break
@@ -180,7 +196,7 @@ def normalize_frame(df, table=None, n_jobs=1, chunk=100_000):
         for i in range(0, len(names), chunk)
     )
     n = pd.DataFrame([r for p in parts for r in p[0]],
-                     columns=["name_norm", "name_core", "legal", "legal_first"])
+                     columns=["name_norm", "name_core", "name_alias", "legal", "legal_first"])
     a = pd.DataFrame([r for p in parts for r in p[1]],
                      columns=["addr_norm", "addr_alpha", "nums", "postcode", "street_key", "landmark"])
     out = pd.concat([n, a], axis=1)
