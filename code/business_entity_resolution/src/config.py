@@ -16,16 +16,24 @@ LGB_JOBS = int(os.environ.get("ER_LGB_JOBS", max(1, (os.cpu_count() or 2) - 2)))
 # --- sampling -----------------------------------------------------------------
 DEV_FRAC = 0.10    # share of train S1 entities used by --eval-only dev runs
 TRAIN_FRAC = 0.15  # share of train S1 entities used to fit models in full runs
+TRAIN_KEEP_RANK = 10    # negatives with block_rank below this are always fitted on
+TRAIN_EASY_RATE = 0.25  # share of the remaining (easy) negatives fitted on, weighted 1/rate
 
 # --- blocking -----------------------------------------------------------------
 BLOCK_MAX_DF = 2000   # drop keys whose pool document frequency exceeds this
 BLOCK_CHUNK = 2000    # S1 rows per sparse-matmul chunk (each worker holds one product per channel)
-BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.5, "np": 0.5, "nc": 1.5, "n2": 0.7,
-           "a": 0.6, "ab": 1.5, "p": 1.0}
+# Weights follow EDA §G.8: `a`/`ab` carry unique recall, `nm` is usable on few pairs.
+# No postcode family: postcodes are found on <= 1.9% of records (EDA §G.6).
+BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.3, "np": 0.5, "nc": 1.5, "n2": 0.7,
+           "a": 1.0, "ab": 2.5, "na": 1.0}
 NAME_FAMS = ("n", "nb", "nm", "np", "nc", "n2")
-ADDR_FAMS = ("a", "ab", "p")
+ADDR_FAMS = ("a", "ab")
+CROSS_FAMS = ("na",)  # name-core token x address token: a common name located by a common place
 # {channel: (key families, top-k kept per S1)}; candidates = union over channels.
-BLOCK_CHANNELS = {"name": (NAME_FAMS, 20), "addr": (ADDR_FAMS, 20), "all": (NAME_FAMS + ADDR_FAMS, 30)}
+BLOCK_CHANNELS = {"name": (NAME_FAMS + CROSS_FAMS, 20), "addr": (ADDR_FAMS, 20),
+                  "all": (NAME_FAMS + ADDR_FAMS + CROSS_FAMS, 30)}
+NA_NAME_TOKS = 3  # first name-core tokens crossed ...
+NA_ADDR_TOKS = 6  # ... with up to this many address alpha tokens (both len >= 2)
 
 # --- model --------------------------------------------------------------------
 N_FOLDS = 5
@@ -55,3 +63,8 @@ EF_DRAWS = 128
 EF_KMAX = 12
 T_MATCH = 0.5
 T_EMPTY = 0.5
+# decoder tuning grids (MVP optimum sat on the old grids' edges: t_match 0.7, tau 0.8, lam 0.5)
+GRID_T_MATCH = (0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9)
+GRID_T_EMPTY = (0.3, 0.5, 0.7, 0.9)
+GRID_TAU = (0.5, 0.6, 0.7, 0.8, 1.0)
+GRID_LAM = (0.0, 0.25, 0.5, 1.0)

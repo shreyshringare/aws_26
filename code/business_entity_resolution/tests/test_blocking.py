@@ -1,7 +1,7 @@
 """Tests for key generation and per-country IDF blocking."""
 import pandas as pd
 
-from src.blocking import FAMS, generate_candidates, record_keys
+from src.blocking import FAMS, cross_keys, generate_candidates, record_keys
 from src.config import ADDR_FAMS, NAME_FAMS
 from src.normalize import normalize_frame
 
@@ -11,9 +11,10 @@ def _frame(rows):
 
 
 def test_record_keys_families():
-    keys = record_keys("peak highland fast", "veterans pkwy marshfield wi", "3029_veterans", "")
+    keys = record_keys("peak highland fast", "veterans pkwy marshfield wi", "3029_veterans")
     fams = {f for f, _ in keys}
-    assert fams == {"n", "nb", "nm", "np", "nc", "n2", "a", "ab"}
+    assert fams == {"n", "nb", "nm", "np", "nc", "n2", "a", "ab", "na"}
+    assert ("na", "peak@marshfield") in keys and ("na", "fast@wi") in keys
     assert ("nm", "fhp") in keys and ("ab", "3029_veterans") in keys
     assert ("np", "hglnd") in keys and ("nc", "peakhighlandfast") in keys
     assert {k for f, k in keys if f == "n2"} == {"highland_peak", "fast_peak", "fast_highland"}
@@ -21,7 +22,7 @@ def test_record_keys_families():
 
 def test_record_keys_bridge_domains_reorders_and_scripts():
     def fam(name, f):
-        return {k for g, k in record_keys(name, "", "", "") if g == f}
+        return {k for g, k in record_keys(name, "", "") if g == f}
     assert fam("nexloix advisory", "nc") == fam("nexloixadvisory", "nc") == {"nexloixadvisory"}
     assert fam("abc", "nc") == set()
     assert fam("great trading", "n2") & fam("great private trading", "n2") == {"great_trading"}
@@ -62,3 +63,24 @@ def test_name_channel_keeps_name_only_match_crowded_out_by_address():
     r = multi.set_index("pool_rid")
     assert r.loc[1, "score_name"] > r.loc[0, "score_name"] and r.loc[1, "score_addr"] == 0
     assert (r.block_rank == 0).all()
+
+
+def test_cross_keys_limits_and_min_length():
+    keys = cross_keys("a sri ram traders co".split(), "b main rd main x gandhi nagar pune road".split())
+    names = {k.split("@")[0] for _, k in keys}
+    places = {k.split("@")[1] for _, k in keys}
+    assert names == {"sri", "ram", "traders"}  # first 3 tokens with len >= 2
+    assert places == {"main", "rd", "gandhi", "nagar", "pune", "road"}  # 6 distinct, len >= 2
+    assert len(keys) == 18 and cross_keys([], ["main"]) == set()
+
+
+def test_cross_family_ranks_common_name_at_its_address():
+    s1 = normalize_frame(_frame([["S1-1", "Sri Traders", "Gandhi Nagar, Pune", "India"]]), None)
+    pool = normalize_frame(_frame([
+        ["S2-1", "Sri Traders", "Station Road, Nashik", "India"],
+        ["S2-2", "Sri Traders", "Gandhi Nagar, Pune", "India"],
+        ["S2-3", "Sri Traders", "Mall Road, Agra", "India"],
+    ]), None)
+    only_na = {f: float(f == "na") for f in FAMS}
+    c = generate_candidates(s1, pool, channels={"all": (FAMS, 1)}, weights=only_na, max_df=10, chunk=1, n_jobs=1)
+    assert list(c.pool_rid) == [1]

@@ -24,5 +24,6 @@ def test_build_features_shapes_and_values():
     assert f.loc[0, "f_addr_jac"] == 1.0 and f.loc[0, "f_num1_eq"] == 1.0
     assert f.loc[0, "f_nz_edit1_tokens"] == 1 and f.loc[0, "f_is_s3"] == 1
     assert f.loc[0, "f_name_core_tset"] > f.loc[1, "f_name_core_tset"]
-    assert not any("country" in c for c in f.columns)
+    assert not any("country" in c or "_pc_" in c for c in f.columns)
+    assert list(f["f_nz_num_conflict"]) == [0, 1] and list(f["f_acronym"]) == [0, 0]
     assert all(f[c].dtype == np.float32 for c in f.columns if c.startswith("f_"))

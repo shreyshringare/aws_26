@@ -57,7 +57,8 @@ def test_pair_key_sharing_and_oov():
     a = pd.DataFrame([_rec(name_core="acme", addr_alpha="elm", postcode="12345")])
     b = pd.DataFrame([_rec(name_core="zeta", addr_alpha="elm", postcode="12345")])
     s = pair_key_sharing(a, b, ["US"])
-    assert s.loc["n", "share_pairs_sharing"] == 0 and s.loc["p", "share_pairs_sharing"] == 1
+    assert s.loc["n", "share_pairs_sharing"] == 0 and s.loc["a", "share_pairs_sharing"] == 1
+    assert s.loc["na", "share_pairs_sharing"] == 0
     assert s.loc["any", "share_pairs_sharing"] == 1
     tok, rec = oov_rates(["a b", "c", ""], {"a", "c"})
     assert np.isclose(tok, 1 / 3) and np.isclose(rec, 0.5)
