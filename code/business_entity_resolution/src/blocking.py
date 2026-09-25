@@ -203,6 +203,93 @@ def candidate_columns(channels):
             + [f"rank_{ch}" for ch in channels] + ["n_channels"])
 
 
+def _topk_chunk(s_chunk, pt, kmax, row0):
+    """Score one S1 chunk against one channel's pool index and keep its top-kmax per row."""
+    m = (s_chunk @ pt).tocsr()
+    rows, cols, rank = _topk_rows(m, kmax)
+    return row0 + rows, cols, rank
+
+
+def recall_at_ks(s1n, pooln, pos, ks, s1_rids=None, fams=None, max_df=None, weights=None,
+                 chunk=None, n_jobs=None):
+    """Blocking recall and candidates/entity for a sweep of K, in one pass over the data.
+
+    Diagnostic for IDEAS.md B.1/B.6: instead of calling `generate_candidates` once per K (which
+    would rebuild the sparse key index and rescore every S1 x pool pair from scratch for each K),
+    this scores every pair once per country at `max(ks)` -- reusing the same machinery as
+    `block_country`/`_topk_rows` -- and then applies each smaller K in `ks` as a cheap rank cutoff
+    on that one ranked result. Read-only measurement tool; not wired into the default blocking
+    path or CLI.
+
+    `s1n`/`pooln` are normalized frames (as from `normalize.normalize_frame`). `pos` is the
+    ground-truth positive pairs as a frame with `s1_rid`/`pool_rid` columns in the same rid space
+    as `s1n["rid"]`/`pooln["rid"]` (e.g. `run_pipeline.gt_rid_pairs`). `ks` is any iterable of
+    positive ints; a single channel is scored (`fams`, default all families -- pass e.g.
+    `config.ADDR_FAMS` to measure "what if I raised K on the addr channel").
+
+    Returns {k: {"recall": .., "cands_per_entity": ..}} for every k in `ks`.
+    """
+    fams = fams or FAMS
+    max_df = max_df or config.BLOCK_MAX_DF
+    weights = weights or config.BLOCK_W
+    chunk = chunk or config.BLOCK_CHUNK
+    n_jobs = n_jobs or config.N_JOBS
+    if s1_rids is not None:
+        s1n = s1n[s1n["rid"].isin(s1_rids)]
+    ks = sorted(set(int(k) for k in ks))
+    kmax = ks[-1]
+    fw = np.array([weights[f] * (f in fams) for f in FAMS], np.float32)
+    n_entities = len(s1n)
+
+    s1_rid_parts, pool_rid_parts, rank_parts = [], [], []
+    for c in pd.unique(s1n["country"]):
+        a = s1n[s1n["country"] == c].reset_index(drop=True)
+        b = pooln[pooln["country"] == c].reset_index(drop=True)
+        if not (len(a) and len(b)):
+            continue
+        mats, pt = build_index(hash_frame(a, n_jobs), hash_frame(b, n_jobs), len(a), len(b), max_df, [fw])
+        parts = Parallel(n_jobs=n_jobs)(
+            delayed(_topk_chunk)(mats[0][i:i + chunk], pt, kmax, i) for i in range(0, len(a), chunk)
+        )
+        if not parts:
+            continue
+        r, cc, rk = (np.concatenate(x) for x in zip(*parts))
+        s1_rid_parts.append(a["rid"].to_numpy()[r])
+        pool_rid_parts.append(b["rid"].to_numpy()[cc])
+        rank_parts.append(rk)
+
+    if not s1_rid_parts:
+        return {k: {"recall": 0.0, "cands_per_entity": 0.0} for k in ks}
+
+    s1_rid = np.concatenate(s1_rid_parts)
+    pool_rid = np.concatenate(pool_rid_parts)
+    rank = np.concatenate(rank_parts)
+
+    def pack(a, b):
+        return a.astype(np.int64) * (1 << 32) + b.astype(np.int64)
+
+    cand_key = pack(s1_rid, pool_rid)
+    order = np.argsort(cand_key)
+    sorted_key, sorted_rank = cand_key[order], rank[order]
+
+    pos_key = pack(pos["s1_rid"].to_numpy(), pos["pool_rid"].to_numpy())
+    n_pos = len(pos_key)
+    if n_pos and len(sorted_key):
+        idx = np.searchsorted(sorted_key, pos_key)
+        idx_c = np.minimum(idx, len(sorted_key) - 1)
+        found = (idx < len(sorted_key)) & (sorted_key[idx_c] == pos_key)
+        pos_rank = np.where(found, sorted_rank[idx_c], kmax)  # kmax sentinel = never retrieved within kmax
+    else:
+        pos_rank = np.full(n_pos, kmax, np.int64)
+
+    out = {}
+    for k in ks:
+        hit = int((pos_rank < k).sum()) if n_pos else 0
+        n_cands = int((rank < k).sum())
+        out[k] = {"recall": hit / max(n_pos, 1), "cands_per_entity": n_cands / max(n_entities, 1)}
+    return out
+
+
 def generate_candidates(s1n, pooln, s1_rids=None, topk=None, max_df=None, weights=None,
                         chunk=None, n_jobs=None, channels=None):
     """Block every country label present in S1 against same-label pool records.

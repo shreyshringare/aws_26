@@ -2,7 +2,7 @@
 import pandas as pd
 
 from src import config
-from src.blocking import FAMS, cross_keys, generate_candidates, name_keys, record_keys
+from src.blocking import FAMS, cross_keys, generate_candidates, name_keys, recall_at_ks, record_keys
 from src.config import ADDR_FAMS, NAME_FAMS
 from src.normalize import normalize_frame
 
@@ -135,3 +135,59 @@ def test_name_keys_features_only_mode_can_drop_all_name_families(monkeypatch):
     too, proving the gate is driven purely by config, not hardcoded to always keep 'n'."""
     monkeypatch.setattr(config, "NAME_KEY_FAMS", ())
     assert name_keys("peak highland fast".split()) == set()
+
+
+def test_recall_at_ks_matches_generate_candidates_per_k_and_sweeps_monotonically():
+    """recall_at_ks must agree with calling generate_candidates separately at each K (the naive,
+    non-reused way), while computing all K's in one pass; recall/cands_per_entity must be
+    non-decreasing in K and plateau once every scored (nonzero) pair is already retrieved."""
+    s1 = normalize_frame(_frame([
+        ["S1-1", "Peak Highland Fast Inc", "3029 Veterans Parkway, Marshfield, WI", "US"],
+        ["S1-2", "Zephay Labs Inc", "2621 Cotten Road, Tyler, TX", "US"],
+    ]), None)
+    pool = normalize_frame(_frame([
+        ["S3-9", "Peak Highland Fast", "3029 Veterans Pkwy, Marshfield, Wisconsin", "US"],
+        ["S3-10", "Peak Highland Fast LLC", "1000 Other Ave, Nowhere, WI", "US"],
+        ["S2-7", "Zephay Labs", "2621 Cotten Rd, Tyler, Texas", "US"],
+    ]), None)
+    # s1=0 has two true matches (an exact-ish one and a name-only-similar one that should rank
+    # lower); s1=1 has one. The name-only match should only become reachable once K >= 2.
+    pos = pd.DataFrame({"s1_rid": [0, 0, 1], "pool_rid": [0, 1, 2]})
+
+    rep = recall_at_ks(s1, pool, pos, ks=[1, 2, 3], max_df=10, chunk=2, n_jobs=1)
+    assert set(rep) == {1, 2, 3}
+    assert rep[1]["recall"] < rep[2]["recall"] == rep[3]["recall"] == 1.0
+    assert rep[1]["cands_per_entity"] < rep[2]["cands_per_entity"] == rep[3]["cands_per_entity"]
+
+    for k in (1, 2, 3):
+        c = generate_candidates(s1, pool, channels={"all": (FAMS, k)}, max_df=10, chunk=2, n_jobs=1)
+        hit = sum(1 for _, r in pos.iterrows()
+                  if ((c.s1_rid == r.s1_rid) & (c.pool_rid == r.pool_rid)).any())
+        assert rep[k]["recall"] == hit / len(pos)
+        assert rep[k]["cands_per_entity"] == len(c) / len(s1)
+
+
+def test_recall_at_ks_no_shared_keys_returns_zero_recall_and_zero_cands():
+    """When no country/key overlap exists at all, every K reports 0 recall, 0 cands/entity
+    (the 'no countries matched' short-circuit path)."""
+    s1 = normalize_frame(_frame([["S1-1", "Zzz Unique Corp", "1 Nowhere Ln", "US"]]), None)
+    pool = normalize_frame(_frame([["S2-1", "Totally Different Biz", "Other Place", "France"]]), None)
+    pos = pd.DataFrame({"s1_rid": [0], "pool_rid": [0]})
+    rep = recall_at_ks(s1, pool, pos, ks=[1, 5], max_df=10, chunk=2, n_jobs=1)
+    assert rep[1] == {"recall": 0.0, "cands_per_entity": 0.0}
+    assert rep[5] == {"recall": 0.0, "cands_per_entity": 0.0}
+
+
+def test_recall_at_ks_channel_param_restricts_scoring_families():
+    """Passing `fams` restricts the sweep to one channel's families (e.g. addr-only), matching
+    the "what if I raised K on the addr channel" use case from IDEAS.md."""
+    s1 = normalize_frame(_frame([["S1-1", "Peak Highland Fast Inc",
+                                  "3029 Veterans Parkway, Marshfield, WI", "US"]]), None)
+    pool = normalize_frame(_frame([
+        ["S3-9", "Totally Unrelated Name", "3029 Veterans Pkwy, Marshfield, Wisconsin", "US"],
+    ]), None)
+    pos = pd.DataFrame({"s1_rid": [0], "pool_rid": [0]})
+    addr_only = recall_at_ks(s1, pool, pos, ks=[1], fams=ADDR_FAMS, max_df=10, chunk=2, n_jobs=1)
+    name_only = recall_at_ks(s1, pool, pos, ks=[1], fams=NAME_FAMS, max_df=10, chunk=2, n_jobs=1)
+    assert addr_only[1]["recall"] == 1.0  # address overlaps despite unrelated names
+    assert name_only[1]["recall"] == 0.0  # no name overlap at all

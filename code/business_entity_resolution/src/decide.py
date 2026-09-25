@@ -74,26 +74,40 @@ def select_expected_f05(df, extra, p_min=None, kmax=None, n_draws=None, seed=Non
 
 
 def apply_decoder(df, dec, calibrator, extra):
-    """Calibrate -> temper -> global one-to-one -> chosen subset selection."""
+    """Calibrate -> temper -> optional global one-to-one -> chosen subset selection.
+
+    `dec.get("one_to_one", True)`: hard one-to-one (each pool record kept only in its single
+    best-scoring S1 group) is applied unless a decoder explicitly opts out with
+    `one_to_one: False`. Defaulting to True keeps behavior unchanged for any decoder dict that
+    predates this flag (see IDEAS.md B.8: this was previously unconditional).
+    """
     d = df[["s1_rid", "pool_rid", "p"]].copy()
     if calibrator is not None:
         d["p"] = calibrator.predict(d["p"].to_numpy(np.float64)).astype(np.float32)
     d["p"] = temper(d["p"].to_numpy(), dec.get("tau", 1.0))
-    d = one_to_one(d)
+    if dec.get("one_to_one", True):
+        d = one_to_one(d)
     if dec["method"] == "threshold":
         return select_threshold(d, dec["t_match"], dec["t_empty"])
     return select_expected_f05(d, extra * dec.get("lam", 1.0))
 
 
 def tune(df, calibrator, extra, scorer):
-    """Grid-search both decoders on OOF scores with the exact metric; return (best params, all results)."""
+    """Grid-search both decoders on OOF scores with the exact metric; return (best params, all results).
+
+    Also searches `one_to_one` (True vs False) as a grid dimension over every point, so hard
+    global one-to-one assignment (an assumption measured only on train, IDEAS.md B.8) is kept
+    only when it actually beats skipping it, on OOF, same as tau/lam/t_match/t_empty.
+    """
     grid = [{"method": "threshold", "t_match": tm, "t_empty": te, "tau": 1.0}
             for tm in config.GRID_T_MATCH for te in config.GRID_T_EMPTY]
     grid += [{"method": "ef05", "tau": tau, "lam": lam} for tau in config.GRID_TAU for lam in config.GRID_LAM]
     results = []
-    for dec in grid:
-        s = scorer(apply_decoder(df, dec, calibrator, extra))
-        results.append((s, dec))
-        print(f"  {dec} -> {s:.5f}", flush=True)
+    for o2o in (True, False):
+        for base in grid:
+            dec = dict(base, one_to_one=o2o)
+            s = scorer(apply_decoder(df, dec, calibrator, extra))
+            results.append((s, dec))
+            print(f"  {dec} -> {s:.5f}", flush=True)
     best = max(results, key=lambda r: r[0])
     return dict(best[1], oof_f05=round(best[0], 5)), results
