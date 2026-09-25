@@ -61,3 +61,8 @@ EF_DRAWS = 128
 EF_KMAX = 12
 T_MATCH = 0.5
 T_EMPTY = 0.5
+# decoder tuning grids (MVP optimum sat on the old grids' edges: t_match 0.7, tau 0.8, lam 0.5)
+GRID_T_MATCH = (0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9)
+GRID_T_EMPTY = (0.3, 0.5, 0.7, 0.9)
+GRID_TAU = (0.5, 0.6, 0.7, 0.8, 1.0)
+GRID_LAM = (0.0, 0.25, 0.5, 1.0)

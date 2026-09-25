@@ -87,13 +87,9 @@ def apply_decoder(df, dec, calibrator, extra):
 
 def tune(df, calibrator, extra, scorer):
     """Grid-search both decoders on OOF scores with the exact metric; return (best params, all results)."""
-    grid = []
-    for tm in (0.3, 0.4, 0.5, 0.6, 0.7):
-        for te in (0.3, 0.4, 0.5, 0.6, 0.7):
-            grid.append({"method": "threshold", "t_match": tm, "t_empty": te, "tau": 1.0})
-    for tau in (0.8, 1.0, 1.25):
-        for lam in (0.5, 1.0, 2.0):
-            grid.append({"method": "ef05", "tau": tau, "lam": lam})
+    grid = [{"method": "threshold", "t_match": tm, "t_empty": te, "tau": 1.0}
+            for tm in config.GRID_T_MATCH for te in config.GRID_T_EMPTY]
+    grid += [{"method": "ef05", "tau": tau, "lam": lam} for tau in config.GRID_TAU for lam in config.GRID_LAM]
     results = []
     for dec in grid:
         s = scorer(apply_decoder(df, dec, calibrator, extra))
