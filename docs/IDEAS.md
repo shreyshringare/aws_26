@@ -90,10 +90,14 @@ One experiment per idea, logged in `experiments/log.csv`. Keep an idea only if d
 | Address-shape features (token count, has landmark, has number) | ⏭ | US vs India differ strongly; shape transfers, country doesn't | transfer holds |
 | Name-frequency / ambiguity features (how many S1s share this name) | ⏭ | 48–54% of S1 share their exact name | dev ↑ |
 | Phonetic-skeleton similarity feature | 🧪 | extends script-agnostic matching into scoring | native-script errors remain |
-| **Number-conflict feature** (both sides have a house number, it differs, and it isn't a dropped digit) | ⏭ | contradiction signal: same name + different house number = likely a different branch or business | dev ↑ |
-| **Acronym match** (initials of one name == a token of the other: "M E" ↔ "Mahalakshmi Engineering") | ⏭ | abbreviated names; also consider an initials-string blocking key | dev ↑ / recall ↑ |
+| **Number-conflict feature** (both sides have a house number, it differs, and it isn't a dropped digit) | ✅ | `f_nz_num_conflict` in `noise.py`, confirmed by direct code read | — |
+| **Acronym match** (initials of one name == a token of the other: "M E" ↔ "Mahalakshmi Engineering") | ✅ | `f_acronym` in `noise.py`, confirmed by direct code read | — |
+| **Near-miss number flag** (numbers present both sides, small edit distance, not equal, not disjoint) | ⏭ | distinct from `f_nz_num_conflict` above (conflict = disagree, no distance notion); confirmed real gap in `docs/EDA_TEAMMATE.md` §5/§7 and `docs/ERRORS.md` class 3 (FP/FN inconsistency on the identical 420↔433 vs 100↔113 house-number pattern) | dev ↑ |
 | Char n-gram TF-IDF cosine (name, address) | 🧪 | robust to typos and unseen FR words | France proxy ↑ |
 | Small multilingual embedding similarity (multilingual-e5-small, MIT) | 🧪 | semantic + cross-script; needs GPU/time | only if CPU budget allows and transfer ↑ |
+| `nc` (concatenated-name) blocking family: check weight/top-k against hashtag/concatenated-name misses | 🧪 | `docs/ERRORS.md` class 1 example ("#Physicaltherapy" missed, `nc` exists for exactly this case) | recall ↑ on that miss pattern |
+| Kannada-specific transliteration coverage check in `translit.py` | 🧪 | `docs/ERRORS.md` class 5: a clean-looking Kannada transliteration case scored p=0.003 (near-total miss) vs moderate scores for Tamil cases | Kannada-specific recall gap confirmed |
+| `trade_name_swap` taxonomy class (shared address, disjoint name tokens) | ⏭ | `docs/ERRORS.md` class 8 meta-finding: the largest unclassified FP bucket has a real recurring pattern (same address, unrelated names) matching EDA.md §C's measured 8.0% trade-name-swap rate, not currently a distinct feature/class | re-sample after adding the class |
 
 ### B.4 Training data picking
 | Idea | Status | Rationale / evidence | Adopt if |
@@ -121,7 +125,9 @@ One experiment per idea, logged in `experiments/log.csv`. Keep an idea only if d
 | Threshold + empty-gate baseline | ✅ | fallback | — |
 | Joint S2/S3 cluster decision (pick consistent clusters, not just top-k) | 🧪 | uses S2↔S3 similarity at decision time | stage-2 triangle features aren't enough |
 | Segment thresholds by country-agnostic segments (S2 vs S3, missing address, native script); **not** per country (France untunable) | 🧪 | noise differs by segment | beats the single decoder on OOF |
-| **Error-analysis taxonomy** after each dev run (~200 errors → blocking miss / abbreviation / address norm / model FP / threshold / other) | ⏭ | attack the biggest bucket first | — |
+| **Error-analysis taxonomy** after each dev run (~200 errors → blocking miss / abbreviation / address norm / model FP / threshold / other) | ✅ | done for E05, see `docs/ERRORS.md` — blocking_miss (60% of FN sample) and threshold (18%) dominate, `other` bucket (47% of FP sample) revealed the classifier's taxonomy itself is missing a trade-name-swap class | rerun after each significant dev-config change |
+| Bare legal-suffix-drop as a sub-case of Prompt 8's alias work (not just `dba`-keyword aliases) | ⏭ | `docs/ERRORS.md` class 4: several FN examples are pure legal-suffix drops ("Jackson Keystone Btc Corp" vs "...Btc", no `dba`/`aka` keyword involved) that Prompt 8's alias regex as currently speced wouldn't catch | dev ↑ on legal-suffix-only mismatches |
+| Spot-check high-confidence `other`-class FPs for ground-truth label noise before further feature work | 🧪 | `docs/ERRORS.md` class 8: "Vibgyor Infraventures Private Limited" vs "Shri Vibgyor Infraventures Limited" scored p=0.976 and is labeled non-match — plausibly a label edge case, not a model error | if ≥10% of a fresh `other` sample look like label noise |
 | Recall-vs-K curve per channel (K = 20…100) | ⏭ | pick K by the marginal recall per candidate | — |
 | Cardinality prior (predicted number of matches per business) | 🧪 | EDA shows a tight count distribution (p90 = 6) | EF0.5 over/under-selects |
 

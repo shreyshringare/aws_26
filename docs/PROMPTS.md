@@ -4,33 +4,41 @@ Run these in order. Each prompt is self-contained: paste it into a Claude Code s
 `D:\AWS_HACK\student_resource` (or the SageMaker checkout). Do one prompt per session or per shift.
 Before starting, check `HANDOFF.md` → "Current state" to see which step is next.
 
-State at the time of writing (25 Sep, updated post-MVP-run):
-- MVP code works: dev OOF F0.5 = 0.94642 (exp E03; US 0.95648, India 0.93133, singletons 0.95802),
-  blocking recall 0.9185 at 42.5 cands/entity (exp B03).
-- **Real predictions file now exists**, produced on SageMaker (`ml.r5.4xlarge`) via
-  `code/business_entity_resolution/notebooks/train.ipynb`, not via the Prompt 1B CLI path below — that
-  path is still valid/reproducible but wasn't what actually ran this time. Validator PASS: 1,732,544/
-  1,732,544 test S1 rows (122,399 empty, 1,610,145 non-empty), France included. **Still not uploaded to
-  the portal** — 0/5 uploads used today. This run is stage-1 only: `NO_STAGE2=True` in the notebook.
+State at the time of writing (25 Sep, updated through Prompt 4 done / Prompt 5 in progress):
+- **`docs/NEXT_STEPS.md` is the live priority tracker — read it first, this header is a snapshot.**
+  It has a "Status update" note at the top of its ranked-order section showing exactly which items are
+  done vs pending, plus its own Warnings/Leads sections. This PROMPTS.md header will drift; NEXT_STEPS
+  is where completions get marked.
+- **Prompt 1 (MVP)**: done. Prompt 2 (upload): done — first real submission, tag `sub-d1-01`, exp E03,
+  public LB **0.942**, recorded in `experiments/log.csv` and `HANDOFF.md`.
+- **Prompt 3 (merge stage-2 branch)**: done — `worktree-agent-a0b1edbe6ec982855` merged clean (no
+  conflicts, 44/44 tests pass), worktree removed. `src/context.py` now has the real stage-2
+  implementation, no longer a stub. This unblocked Prompt 6 and `NO_STAGE2=False`.
+- **Prompt 4 (blocking experiments)**: done. B05 (EDA weights + `na` cross keys) is the kept config —
+  recall **0.9534** (up from B03's 0.9185), 42.6 cands/entity. `na` cross-key alone was worth +3.5pt
+  recall for <1 extra candidate/entity, the single biggest lever measured. B06 (wider name channel)
+  wasn't worth it, reverted. Still 1.7pt short of the 0.97 target but clears Prompt 4B's 0.95 skip
+  threshold, so the char n-gram channel isn't needed. A real bug got fixed along the way:
+  `cross_keys()` in `blocking.py` was unconditional, ignoring `config.CROSS_FAMS` — now gated correctly.
+- **Prompt 5 (stage-1 dev eval, exp E04)**: in progress as of this update — check
+  `experiments/log.csv` for an E04 row with `f05_all` filled before re-running it.
+- Own-EDA (`docs/EDA.md` §G) and teammate-EDA (`docs/EDA_TEAMMATE.md`) findings have both been
+  cross-checked directly against the source, not just cited from the docs — see `docs/NEXT_STEPS.md`
+  items 9 and 10. Confirmed still-open gaps: alias splitting and French `etablissements`/`bis`/`ter`
+  (both target of Prompt 8, not yet run), near-miss number flag (distinct from the existing
+  `f_nz_num_conflict` — don't conflate them), NaN-vs-0 for missing-address features.
 - Models + decoder saved locally on the SageMaker instance (`cache/m1_stage1.txt`,
-  `cache/{tag}_decoder.json`) via a new notebook section 12. **Not yet in S3** — the notebook instance's
-  IAM role has no S3 permissions (`aws s3 cp` → "Unable to locate credentials"); needs a policy attach +
+  `cache/{tag}_decoder.json`) via notebook section 12. **Not yet in S3** — the notebook instance's IAM
+  role has no S3 permissions (`aws s3 cp` → "Unable to locate credentials"); needs a policy attach +
   instance stop/start before `aws-hack-sagemaker` is usable. This does NOT block portal upload or
-  `archive_submission.py` (below) — only the S3 backup/sharing step.
-- ⚠️ **`src/context.py` on `feat/pipeline` is a one-line stub** (`"""Stage-2 group, competition and
-  triangle-support features (implemented in Phase 4)."""` — no code). The real stage-2 implementation
-  only exists on the unmerged branch `worktree-agent-a0b1edbe6ec982855`. **Do not flip `NO_STAGE2=False`
-  or run Prompt 6 before Prompt 3 (the merge) lands** — it would call an unimplemented function.
+  `archive_submission.py` — only the S3 backup/sharing step.
 - The first full test run crashed in blocking (WinError 1450, too many worker processes). Fix committed
-  in `0acf8f7` (`ER_LGB_JOBS` separate from `ER_JOBS`).
-- The four improvements (stage-2, sampling, na cross keys, wider decoder grids) are committed on branch
-  `worktree-agent-a0b1edbe6ec982855` but not merged or measured yet — see Prompt 3, now higher priority.
-- Full teammate EDA cross-validation is written up: `docs/EDA_TEAMMATE.md` (48-file source, evidence-level
-  tags), consolidated into `docs/IMPROVEMENT_PLAN.md` and the ranked `docs/NEXT_STEPS.md`. Read
-  `docs/NEXT_STEPS.md` for the current priority order and its Warnings/Leads sections before picking a
-  prompt below — several prompts here (4, 5, 8) already have teammate-EDA context folded in.
+  in `0acf8f7` (`ER_LGB_JOBS` separate from `ER_JOBS`). System RAM is generally tight on this machine
+  (as low as 1.1GB free observed during blocking runs) — the specified `ER_JOBS=4` in prompts below may
+  need lowering to 2 depending on what else is running; watch `Get-Process python` and free memory
+  before launching a heavy prompt.
 - **Portal rules (guidelines):** each teammate uses only their own login on one laptop or desktop (no simultaneous logins, no mobile). Max 5 uploads per team per day, and every upload is archived (version history is used for shortlisting). Ask questions via the organisers' Google Form; they won't make decisions for us.
-- ⚠️ **Only one session may run the pipeline at a time.** A full run needs most of the 16 GB of RAM; two parallel runs both crash. Check with `Get-Process python` first.
+- ⚠️ **Only one session may run the pipeline at a time.** A full run needs most of the RAM; two parallel runs both crash or thrash badly. Check with `Get-Process python` first.
 
 ## ▶ Start here (visible progress path)
 1. **Prompt 0** (session start) → shows where things stand.
@@ -234,6 +242,8 @@ Two concrete feature gaps found against docs/EDA_TEAMMATE.md §5/§7 (checked, n
    equal (col 3), but no "numbers present on both sides, close but not equal" flag. This is the
    dominant distractor pattern in their hard_negatives sample ("511 Yacht Drive" vs "513 Yacht Drive",
    "Sn 2101" vs "Sn 2108") — small numeric edit distance, not exact match, not totally different.
+   NOT the same as noise.py's existing f_nz_num_conflict (numbers present, disagree, no distance
+   notion) -- that already exists and does not cover this, confirmed by reading noise.py directly.
 2. Address-missing features are 0, not NaN, when one side has no address (fuzz.ratio("", x) == 0).
    f_addr_empty_{a,b} flags exist so the model can partly compensate, but the raw similarity columns
    still read as "totally different" rather than "no data" — test whether making them NaN (LightGBM
@@ -275,6 +285,12 @@ as E0x. Report both.
 
 ## Prompt 8 — Normalization v2 (from EDA + error analysis)
 ```
+Confirmed by directly reading src/normalize.py (not just the docs): alias splitting and French
+etablissements/ets/bis/ter are genuinely NOT implemented yet -- docs/EDA.md §G7/G10 (our own EDA)
+both call for them and both are still open, docs/NEXT_STEPS.md item 10 has the full code-level audit.
+The one "ter" match in normalize.py is the unrelated street-type abbreviation ("terrace"->"ter"), not
+the French house-number suffix -- don't mistake one for covering the other.
+
 Implement normalization v2 (TDD, docstrings, no external data):
 - Split aliases (dba|aka|fka|formerly|formerly known as|nee|doing business as) into a new name_alias
   column; name features use the best of name vs alias.

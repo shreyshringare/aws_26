@@ -8,6 +8,7 @@ Run from code/business_entity_resolution/:
 import argparse
 import csv
 import json
+import os
 import subprocess
 import sys
 import time
@@ -264,6 +265,11 @@ def main(argv=None):
         p2, models2 = model.train_oof(feats[cols], y, groups, **fit)
         feats["p2"] = p2
         pcol = "p2"
+        if os.environ.get("ER_DUMP_IMPORTANCE"):
+            imp = np.mean([m.feature_importances_ for m in models2], axis=0)
+            ranked = sorted(zip(cols, imp), key=lambda t: -t[1])
+            log("stage2 feature importances (mean over folds, top 25):\n" +
+                "\n".join(f"  {c}: {v:.1f}" for c, v in ranked[:25]))
 
     scorer = Scorer(s1n, pooln, gt, rids)
     extra = brep["missed_per_entity"]
@@ -274,6 +280,12 @@ def main(argv=None):
     sel = decide.apply_decoder(scored, dec, calib, extra)
     bd = scorer.breakdown(sel)
     log(f"OOF breakdown {bd}")
+    if os.environ.get("ER_DUMP_OOF"):
+        dump = scored.assign(y=y, matched=0)
+        sel_key = pair_key(sel["s1_rid"], sel["pool_rid"])
+        dump.loc[np.isin(pair_key(dump["s1_rid"], dump["pool_rid"]), sel_key), "matched"] = 1
+        dump.to_parquet(cache_path(f"oof_scores_{frac}", "parquet"))
+        log(f"dumped {len(dump):,} OOF-scored rows -> {cache_path(f'oof_scores_{frac}', 'parquet')}")
     tr = {} if args.no_transfer else transfer_report(feats, y, cols1, scorer, dec, extra, fit_mask, fit_w)
     log(f"transfer {tr}")
     row.update({"f05_all": round(bd["all"], 5), "f05_us": round(bd.get("country=US", np.nan), 5),

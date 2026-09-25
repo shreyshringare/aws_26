@@ -6,20 +6,20 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 ## Current state (overwrite every shift)
 | Item | Value |
 |---|---|
-| Last updated | 2026-09-25 (post-first-upload) |
-| Next plan task | Merge `worktree-agent-a0b1edbe6ec982855` (Prompt 3) — `src/context.py` on feat/pipeline is a stub, blocks real stage 2 |
-| Best dev OOF F0.5 | 0.94642 (exp E03, stage-1 only — `NO_STAGE2=True`, stage-2 code not merged yet) |
-| Dev blocking recall / cands per entity | 0.9185 / 42.5 |
-| Transfer US→IN / IN→US | not computed (nan in log.csv — still owed per CLAUDE.md) |
-| Best public LB (exp id) | **0.942 (exp E03, tag sub-d1-01)** — first real upload |
+| Last updated | 2026-09-25 (post-E04, Prompt 6 launching) |
+| Next plan task | Prompt 6 — stage-2 dev eval (exp E05), real `context.py` code now merged |
+| Best dev OOF F0.5 | **0.96274 (exp E04**, stage-1 only, post-merge blocking+features+sampling; up from E03's 0.94642) |
+| Dev blocking recall / cands per entity | 0.9534 / 42.6 (exp B05, up from B03's 0.9185/42.5) |
+| Transfer US→IN / IN→US | **0.89097 / 0.94047** (exp E04, first time computed — real gap vs in-distribution 0.9627, relevant for France risk) |
+| Best public LB (exp id) | 0.942 (exp E03, tag sub-d1-01) — first real upload, predates E04's blocking/feature gains |
 | Uploads used today (of 5) | D1: 1 · D2: 0 · D3: 0 |
-| Chosen decoder + params | threshold, t_match=0.7, t_empty=0.3 |
-| Cache tag in use | v1 |
-| Running jobs (where, command, log file) | none (`mvp_run.log` / `mvp_run_err.log` at repo root from last background run) |
-| SageMaker instance state (account owner) | running — `ml.r5.4xlarge`, notebook `train.ipynb` executed through section 11 + local model/decoder save |
-| Shared S3 bucket for cache/artifacts | `aws-hack-sagemaker` created, **not yet writable** — notebook instance IAM role has no S3 permissions (`aws s3 cp` fails "Unable to locate credentials"); needs policy attach + instance stop/start |
-| Known bugs / blockers | (1) `src/context.py` on feat/pipeline is a docstring stub — real stage-2 code only on unmerged `worktree-agent-a0b1edbe6ec982855` (commit `61efe0b`); do not flip `NO_STAGE2=False` until merged. (2) S3 push blocked on IAM role (see above). |
-| Target | 0.942 → 0.985+ requested. See `docs/NEXT_STEPS.md` ranked plan; realistic ceiling is blocking-recall-bound, treat 0.985 as "push as far as possible." |
+| Chosen decoder + params | threshold, t_match=0.7, t_empty=0.3 (re-tuned on E04, same params as E03 coincidentally) |
+| Cache tag in use | v2 |
+| Running jobs (where, command, log file) | none |
+| SageMaker instance state (account owner) | running — `ml.r5.4xlarge`, notebook `train.ipynb` executed through section 11 + local model/decoder save (this session's Prompt 3-6 work has been on local Windows machine, not yet re-run on SageMaker) |
+| Shared S3 bucket for cache/artifacts | `aws-hack-sagemaker` created, **not yet writable** — notebook instance IAM role has no S3 permissions; needs policy attach + instance stop/start |
+| Known bugs / blockers | (1) S3 push blocked on IAM role (see above). (2) System RAM tight on local machine (as low as 1.1GB free during blocking runs) — ER_JOBS may need lowering from prompt defaults. (3) Feature importances + one-to-one ablation (docs/IDEAS.md B.8) not yet captured for E04 — pipeline doesn't persist fold models/OOF scores, would need a rerun; deferred to whenever Prompt 6 reruns training. |
+| Target | 0.942 (public LB) → 0.985+ requested. Dev OOF now at 0.96274 (E04), real progress. See `docs/NEXT_STEPS.md` ranked plan. |
 
 ## Credits tracker (each teammate has their own AWS account)
 | Member | AWS plan (Free/Paid) | Credits left | Instance quota ok? | Notes |

@@ -166,7 +166,10 @@ legal-form agreement, name IDF, numeric Jaccard, address-empty flags) — two re
 
 1. **Near-miss number flag** — not implemented. Their dominant distractor pattern (`hard_negatives.csv`)
    is small numeric edit distance ("511 Yacht Drive" vs "513 Yacht Drive"), which current features don't
-   distinguish from "numbers agree" or "no numbers present."
+   distinguish from "numbers agree" or "no numbers present." **Not the same as `f_nz_num_conflict`**
+   (already in `noise.py` — numbers present, disagree, no distance notion): near-miss needs the actual
+   edit distance between numeric tokens, conflict just needs "not equal." Don't skip this thinking
+   conflict already covers it.
 2. **Address-missing scores 0, not NaN**, in similarity features when one side has no address. The
    `f_addr_empty_{a,b}` flags exist so the model can partly compensate, but worth testing whether NaN
    (LightGBM handles it natively) changes anything.
@@ -176,14 +179,54 @@ whether either moves f05_all before committing.
 
 ---
 
+## 10. Our own `docs/EDA.md` §G cross-checked against code (not just teammate's EDA)
+
+Same audit as item 9, but against our own EDA's 11 implications (`docs/EDA.md` §G) instead of the
+teammate's. Verified by reading the actual source, not assuming from the doc:
+
+**Already implemented, confirmed in code:**
+- k-bucket dev/OOF stratification (`src/sampling.py::match_bin`) — G1
+- Global one-to-one + competition feature (`decide.one_to_one`, `context.py`), hard-negative training
+  rows via `sampling.py::training_rows` — G2
+- Address agreement + name-frequency features — G3
+- All noise-channel features (`f_nz_*`: digit deletion, num_missing_one, generic-only, legal-moved,
+  edit1, addr-only, accent-only, addr-norm-only, num_conflict, acronym) — G4
+- Address-shape features instead of country (`f_land`, `f_script`, `f_ntok`, `f_addr_empty`) — G5
+- Postcode dropped entirely (no `p` blocking family, no postcode feature group) — G6
+- Blocking family reweighting (`a`/`ab` up, `nm` down) matches `config.BLOCK_W` exactly — G8
+- Name-frequency/IDF computed per-split pool (test pool when scoring test, not baked from train
+  vocab) — `add_frequency_columns` takes `pooln` as a parameter, not a fixed train reference — G9
+
+**Still gaps — same two Prompt 8 already targets, now confirmed as real (not already quietly done):**
+- **Alias splitting** (`dba`/`aka`/`fka`/`formerly`) — not in `normalize.py`. Generic-vocab min-length-3
+  filter *is* done, the alias-column split isn't — G7.
+- **French `etablissements/ets` legal prefix, `bis`/`ter` house-number skip** — not in `normalize.py`.
+  (A `"ter"` match exists but it's the unrelated street-type abbreviation "terrace"→"ter", not the
+  French house-number suffix — don't mistake one for covering the other.) — G10.
+
+**Action:** no new work beyond what Prompt 8 already plans — this just confirms Prompt 8's scope is
+accurate and these two items haven't silently landed elsewhere in the codebase.
+
+---
+
 ## Ranked order for a friend picking this up cold
 
-1. Item 1 (blocking recall → 0.97) — nothing else matters if true matches never reach scoring.
-2. Item 2 (turn stage 2 on, real E04 run) — biggest single score lever currently unused.
-3. Item 3 (re-tune decoder against real stage-2 scores) — fold in item 8's singleton constraint here.
+**Status update:** item 1 is DONE — B05 (EDA weights + `na` cross keys) committed, recall 0.9534 (up
+from 0.9185), see `experiments/log.csv` B04/B05/B06 rows. Item 2 (Prompt 3 merge) is also DONE —
+`src/context.py` has real stage-2 code now. Prompt 5 (item "turn stage 2 on for real," exp E04) is
+running as of this update.
+
+1. ~~Item 1 (blocking recall → 0.97)~~ DONE at 0.9534 (short of 0.97, but past the point of easy further
+   gains without the char n-gram channel — see Prompt 4's B06 result, diminishing returns).
+2. ~~Item 2 (merge stage-2 code)~~ DONE via Prompt 3. The E04 dev-eval run itself (Prompt 5) is in
+   progress — check `experiments/log.csv` for an E04 row before re-running it.
+3. Item 3 (re-tune decoder against real stage-2 scores, once E05/Prompt 6 lands) — fold in item 8's
+   singleton constraint here.
 4. Item 5 (quick generic-vocab check — cheap, read-only, do any time).
-5. Item 9 (near-miss number + NaN-address feature gaps — cheap, testable alongside item 2/3).
-6. Item 6 (normalization v2 — France-specific, meaningful for the test set's hardest 15%).
+5. Item 9 (near-miss number + NaN-address feature gaps — cheap, testable alongside E04's follow-up).
+6. Item 6 + item 10 (normalization v2 — alias split + French etablissements/bis-ter, confirmed real
+   gaps by direct code check, not just doc claims — France-specific, meaningful for the test set's
+   hardest 15%).
 7. Item 7 (normalization-as-identity-key experiment — now resolved with methodology, run it during
    item 6's Prompt 8 pass).
 8. Item 4 (hard-negative ingestion — blocked on teammate pushing files).

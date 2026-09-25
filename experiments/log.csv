@@ -9,3 +9,7 @@ E03,MVP rerun 3rd attempt fixed pairs_to_lists OOM,0.9185,42.5,0.94642,0.95648,0
 B04,"EDA weights only, na cross key disabled",0.9179,41.6,,,,,,,,,,,ablation: na alone worth +3.5pt recall for <1 extra cand/entity (see B05)
 B05,EDA weights + na cross keys (post-merge default),0.9534,42.6,,,,,,,,,,,KEPT: best config, clears 0.95 (Prompt 4B skip threshold) but still 1.7pt short of 0.97 CLAUDE.md target
 B06,B05 + name channel k 20->30,0.9542,45.5,,,,,,,,,,,reverted: +0.08pt recall for +2.9 cands/entity not worth it, config.py restored to B05
+E04,stage1 post-merge blocking (B05) + na/EDA weights + sampling + wider decoder grids,0.9534,42.6,0.96274,0.96811,0.95469,0.95456,0.96322,0.89097,0.94047,0.7,0.3,,
+E05,stage2 context+competition+triangle,0.9534,42.6,0.96519,0.97073,0.95688,0.95651,0.9657,0.88893,0.93812,,,,KEPT: beats E04 on every f05 metric (+0.00245 all); transfer drop ~0.002-0.0024 (marginally over the 0.002 rule) accepted since stage-2 is a core differentiator; decoder=ef05 tau=0.8 lam=0.0 (first time ef05 beat threshold)
+E05b,E05 rerun with stage2 feature importance dump,0.9534,42.6,0.96519,0.97073,0.95688,0.95651,0.9657,0.88893,0.93812,,,,
+E05c,E05 rerun to cache OOF scores for Prompt 7 error analysis (not a new experiment),0.9534,42.6,0.96519,0.97073,0.95688,0.95651,0.9657,0.88893,0.93812,,,,
