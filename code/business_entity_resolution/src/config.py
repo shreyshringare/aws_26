@@ -10,6 +10,8 @@ CACHE_DIR = Path(os.environ.get("ER_CACHE", PKG_DIR / "cache"))
 # Bump when normalize/blocking/features change so stale parquet caches are ignored.
 CACHE_TAG = os.environ.get("ER_CACHE_TAG", "v1")
 N_JOBS = int(os.environ.get("ER_JOBS", max(1, (os.cpu_count() or 2) - 2)))
+# LightGBM threads are independent of worker processes (processes cost RAM, threads do not).
+LGB_JOBS = int(os.environ.get("ER_LGB_JOBS", max(1, (os.cpu_count() or 2) - 2)))
 
 # --- sampling -----------------------------------------------------------------
 DEV_FRAC = 0.10    # share of train S1 entities used by --eval-only dev runs
@@ -40,7 +42,7 @@ LGB_PARAMS = dict(
     n_estimators=2000,
     verbose=-1,
     random_state=SEED,
-    n_jobs=N_JOBS,
+    n_jobs=LGB_JOBS,
 )
 
 # --- stage 2 ------------------------------------------------------------------
