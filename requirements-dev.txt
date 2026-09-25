@@ -1,0 +1,4 @@
+# Dev-only tooling for notebooks/ (dashboard, MVP runner, error analysis).
+# Not part of the pipeline environment: requirements.txt stays the pinned, submitted environment.
+notebook==7.6.3
+ipykernel==7.3.0

@@ -40,6 +40,46 @@ Step 3 writes `output/matching_results.tsv` and `output/candidate_pairs.tsv`, th
 Useful flags: `--stop-after blocking|stage1`, `--no-stage2`, `--no-transfer`, `--frac 0.05`,
 `--exp-id E07 --change "text"` (appends a row to `experiments/log.csv`).
 
+## Run + check locally on Windows
+PowerShell, from `code/business_entity_resolution/`:
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+
+# tests
+python -m pytest -q tests
+
+# fast dev loop (no test-set run, prints OOF F0.5 + blocking recall)
+python -m src.run_pipeline --data ..\..\dataset --eval-only
+
+# full run — cap joblib worker processes; loky hits WinError 1450
+# ("insufficient system resources") above ~6-8 worker processes on
+# most laptops. LightGBM threads (ER_LGB_JOBS) are independent and can
+# stay higher since they don't spawn OS processes.
+$env:ER_JOBS = "4"
+$env:ER_LGB_JOBS = "8"
+python -m src.run_pipeline --data ..\..\dataset --out ..\..\output
+```
+Git Bash / WSL: same commands with `source .venv/Scripts/activate` and `export ER_JOBS=4
+ER_LGB_JOBS=8` instead of the `$env:` lines.
+
+Check the output is submission-ready (run from `student_resource/`, not this folder):
+```bash
+python3 utils/validate_submission.py --matching output/matching_results.tsv \
+  --candidate output/candidate_pairs.tsv --test-dir dataset/test
+```
+`PASS` (exit 0) means safe to upload; anything else lists the exact rows/columns to fix.
+
+If a run crashes partway through, re-running resumes from cached parquet under `cache/`
+(normalize/blocking/features already computed are not redone) — see Caching below.
+
+## Notebook (local or SageMaker)
+`notebooks/train.ipynb` is a cell-by-cell version of the same pipeline — it imports `src/run_pipeline`'s
+helpers directly, so it produces identical results to the CLI and shares the same parquet cache. Edit the
+parameters cell (`EVAL_ONLY`, `FRAC`, `NO_STAGE2`, `ER_JOBS`, …) and Run All. Works unmodified after a
+`git clone` onto a SageMaker notebook instance — it locates `src/` by walking up from its own directory.
+
 ## Caching
 Intermediates are cached as parquet in `cache/` (override with `ER_CACHE=/path`). The cache is
 namespaced by `ER_CACHE_TAG` (default `v1`). **After changing normalize, blocking or features,
