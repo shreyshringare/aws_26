@@ -1,7 +1,8 @@
 """Tests for key generation and per-country IDF blocking."""
 import pandas as pd
 
-from src.blocking import FAMS, cross_keys, generate_candidates, record_keys
+from src import config
+from src.blocking import FAMS, cross_keys, generate_candidates, name_keys, record_keys
 from src.config import ADDR_FAMS, NAME_FAMS
 from src.normalize import normalize_frame
 
@@ -103,3 +104,34 @@ def test_cross_family_ranks_common_name_at_its_address():
     only_na = {f: float(f == "na") for f in FAMS}
     c = generate_candidates(s1, pool, channels={"all": (FAMS, 1)}, weights=only_na, max_df=10, chunk=1, n_jobs=1)
     assert list(c.pool_rid) == [1]
+
+
+def test_name_key_mode_defaults_to_keys_and_matches_all_name_fams():
+    """The default config.NAME_KEY_MODE ('keys') is the toggle's off position: NAME_KEY_FAMS
+    must equal NAME_FAMS exactly, so committed behavior is unchanged unless someone flips
+    ER_NAME_KEY_MODE=features_only (Prompt 8 / EDA_TEAMMATE.md §9 measurement toggle)."""
+    assert config.NAME_KEY_MODE == "keys"
+    assert config.NAME_KEY_FAMS == NAME_FAMS
+
+
+def test_name_keys_features_only_mode_drops_abbrev_families(monkeypatch):
+    """With NAME_KEY_FAMS narrowed to just 'n' (the features_only toggle position), name_keys
+    and record_keys stop emitting nb/nm/np/nc/n2 as blocking-key families; n/a/ab/na (address
+    and cross-key families, untouched by this toggle) still appear."""
+    monkeypatch.setattr(config, "NAME_KEY_FAMS", ("n",))
+    toks = "peak highland fast".split()
+    nk = name_keys(toks)
+    assert {f for f, _ in nk} == {"n"}
+    assert nk == {("n", "peak"), ("n", "highland"), ("n", "fast")}
+
+    keys = record_keys("peak highland fast", "veterans pkwy marshfield wi", "3029_veterans")
+    fams = {f for f, _ in keys}
+    assert fams == {"n", "a", "ab", "na"}
+    assert not fams & {"nb", "nm", "np", "nc", "n2"}
+
+
+def test_name_keys_features_only_mode_can_drop_all_name_families(monkeypatch):
+    """An empty NAME_KEY_FAMS (the most extreme features_only position) drops the 'n' family
+    too, proving the gate is driven purely by config, not hardcoded to always keep 'n'."""
+    monkeypatch.setattr(config, "NAME_KEY_FAMS", ())
+    assert name_keys("peak highland fast".split()) == set()

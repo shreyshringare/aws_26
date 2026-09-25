@@ -20,22 +20,31 @@ PAIR_TOKS = 6  # only the first tokens of a name form unordered pairs (n2 grows 
 
 
 def name_keys(toks):
-    """Name-side (family, key) pairs.
+    """Name-side (family, key) pairs, gated by config.NAME_KEY_FAMS (Prompt 8 measurement toggle).
 
     n: tokens; nb: adjacent bigrams; nm: sorted initials; np: phonetic skeletons
     (transliteration variants); nc: tokens concatenated (domain-style names);
-    n2: unordered token pairs (reorders and inserted words).
+    n2: unordered token pairs (reorders and inserted words). By default every family is
+    emitted as a blocking key (config.NAME_KEY_MODE == "keys", identical to pre-toggle
+    behavior). With ER_NAME_KEY_MODE=features_only, nb/nm/np/nc/n2 (all derived from the
+    abbreviation-normalized name_core) are excluded here -- they remain available to
+    features.py/noise.py as scoring features regardless of this toggle.
     """
-    keys = {("n", t) for t in toks}
-    keys |= {("nb", f"{a}_{b}") for a, b in zip(toks, toks[1:])}
-    keys |= {("np", phonetic(t)) for t in toks if len(t) >= 2}
-    head = sorted(set(toks[:PAIR_TOKS]))
-    keys |= {("n2", f"{a}_{b}") for i, a in enumerate(head) for b in head[i + 1:]}
-    if toks:
+    fams = config.NAME_KEY_FAMS
+    keys = {("n", t) for t in toks} if "n" in fams else set()
+    if "nb" in fams:
+        keys |= {("nb", f"{a}_{b}") for a, b in zip(toks, toks[1:])}
+    if "np" in fams:
+        keys |= {("np", phonetic(t)) for t in toks if len(t) >= 2}
+    if "n2" in fams:
+        head = sorted(set(toks[:PAIR_TOKS]))
+        keys |= {("n2", f"{a}_{b}") for i, a in enumerate(head) for b in head[i + 1:]}
+    if "nm" in fams and toks:
         keys.add(("nm", "".join(sorted(t[0] for t in toks))))
-    joined = "".join(toks)
-    if len(toks) >= 2 or len(joined) >= 6:
-        keys.add(("nc", joined))
+    if "nc" in fams:
+        joined = "".join(toks)
+        if len(toks) >= 2 or len(joined) >= 6:
+            keys.add(("nc", joined))
     return keys
 
 

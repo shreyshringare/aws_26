@@ -27,6 +27,23 @@ BLOCK_CHUNK = 2000    # S1 rows per sparse-matmul chunk (each worker holds one p
 BLOCK_W = {"n": 1.0, "nb": 1.0, "nm": 0.3, "np": 0.5, "nc": 1.5, "n2": 0.7,
            "a": 1.0, "ab": 2.5, "na": 1.0}
 NAME_FAMS = ("n", "nb", "nm", "np", "nc", "n2")
+# Measurement toggle for blocking-key families derived from abbreviation-normalized name_core
+# (docs/PROMPTS.md Prompt 8; docs/EDA_TEAMMATE.md §9). Their EDA found abbreviation expansion
+# inflates false-collision risk when used as a blocking IDENTITY KEY (measured collision groups:
+# raw 226 -> abbreviation-expanded 429) and recommends abbreviation-normalized forms drive pair
+# SCORING FEATURES only, with conservative (case-fold/punctuation-strip) forms as the actual
+# blocking keys. Default "keys" reproduces today's committed behavior unchanged: every NAME_FAMS
+# family is used as a blocking key, exactly as before this toggle existed. Set
+# ER_NAME_KEY_MODE=features_only (env var) to exclude the abbreviation-derived families below
+# from blocking-KEY generation in blocking.name_keys/record_keys; "n" (plain name_core tokens)
+# still keys. This does not touch features.py/noise.py, which keep computing abbreviation-
+# normalized similarity features regardless of this toggle -- it only changes what blocking.py
+# hashes as candidate-generation keys. Not yet measured; flip and compare blocking recall on
+# SageMaker (this is a future-run toggle, not something exercised by the default pipeline run).
+ABBR_NAME_FAMS = ("nb", "nm", "np", "nc", "n2")
+NAME_KEY_MODE = os.environ.get("ER_NAME_KEY_MODE", "keys")
+NAME_KEY_FAMS = (NAME_FAMS if NAME_KEY_MODE != "features_only"
+                 else tuple(f for f in NAME_FAMS if f not in ABBR_NAME_FAMS))
 ADDR_FAMS = ("a", "ab")
 CROSS_FAMS = ("na",)  # name-core token x address token: a common name located by a common place
 # {channel: (key families, top-k kept per S1)}; candidates = union over channels.
