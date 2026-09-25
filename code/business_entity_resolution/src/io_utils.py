@@ -68,11 +68,27 @@ def write_lists(path, s1_ids, lists, header):
 
 
 def pairs_to_lists(pairs, s1_col="s1_id", cand_col="cand_id"):
-    """Group a pair DataFrame into {s1_id: [cand ids]}."""
+    """Group a pair DataFrame into {s1_id: [cand ids]}.
+
+    Sorts and slices with numpy instead of pandas groupby().agg(list): at tens of
+    millions of rows the pyarrow-backed agg(list) path tries to materialize one huge
+    array and can raise ArrowMemoryError, even when the data comfortably fits in RAM
+    as plain numpy/Python objects.
+    """
     if len(pairs) == 0:
         return {}
-    g = pairs.groupby(s1_col, sort=False)[cand_col].agg(list)
-    return g.to_dict()
+    s1 = pairs[s1_col].to_numpy()
+    cand = pairs[cand_col].to_numpy()
+    order = np.argsort(s1, kind="stable")
+    s1, cand = s1[order], cand[order]
+    out = {}
+    start = 0
+    n = len(s1)
+    for i in range(1, n + 1):
+        if i == n or s1[i] != s1[start]:
+            out[s1[start]] = cand[start:i].tolist()
+            start = i
+    return out
 
 
 def id_prefix_is_pool(ids):
