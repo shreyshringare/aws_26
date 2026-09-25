@@ -52,7 +52,9 @@ def cross_keys(toks, addr_toks):
 def record_keys(name_core, addr_alpha, street_key):
     """Return the set of (family, key) blocking keys for one normalized record."""
     toks, addr_toks = name_core.split(), addr_alpha.split()
-    keys = name_keys(toks) | cross_keys(toks, addr_toks)
+    keys = name_keys(toks)
+    if "na" in config.CROSS_FAMS:
+        keys |= cross_keys(toks, addr_toks)
     keys |= {("a", t) for t in addr_toks}
     if street_key:
         keys.add(("ab", street_key))

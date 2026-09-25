@@ -6,3 +6,6 @@ E03,MVP: B03 blocking + stage1 LGBM + tuned decoder,0.9185,42.5,0.94642,0.95648,
 E03,MVP rerun,0.9185,42.5,0.94642,0.95648,0.93133,0.95802,0.94573,nan,nan,0.7,0.3,,
 E03,MVP rerun detached resumed after background-task kills,0.9185,42.5,0.94642,0.95648,0.93133,0.95802,0.94573,nan,nan,0.7,0.3,,
 E03,MVP rerun 3rd attempt fixed pairs_to_lists OOM,0.9185,42.5,0.94642,0.95648,0.93133,0.95802,0.94573,nan,nan,0.7,0.3,0.942,sub-d1-01 first upload
+B04,"EDA weights only, na cross key disabled",0.9179,41.6,,,,,,,,,,,ablation: na alone worth +3.5pt recall for <1 extra cand/entity (see B05)
+B05,EDA weights + na cross keys (post-merge default),0.9534,42.6,,,,,,,,,,,KEPT: best config, clears 0.95 (Prompt 4B skip threshold) but still 1.7pt short of 0.97 CLAUDE.md target
+B06,B05 + name channel k 20->30,0.9542,45.5,,,,,,,,,,,reverted: +0.08pt recall for +2.9 cands/entity not worth it, config.py restored to B05
