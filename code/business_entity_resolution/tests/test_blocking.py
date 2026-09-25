@@ -59,10 +59,29 @@ def test_name_channel_keeps_name_only_match_crowded_out_by_address():
     multi = generate_candidates(s1, pool, channels={"name": (NAME_FAMS, 1), "addr": (ADDR_FAMS, 1),
                                                     "all": (FAMS, 1)}, max_df=10, chunk=1, n_jobs=1)
     assert set(multi.pool_rid) == {0, 1}
-    assert list(multi.columns) == ["s1_rid", "pool_rid", "block_score", "block_rank", "score_name", "score_addr"]
+    assert list(multi.columns) == ["s1_rid", "pool_rid", "block_score", "block_rank", "score_name",
+                                    "score_addr", "rank_name", "rank_addr", "rank_all", "n_channels"]
     r = multi.set_index("pool_rid")
     assert r.loc[1, "score_name"] > r.loc[0, "score_name"] and r.loc[1, "score_addr"] == 0
     assert (r.block_rank == 0).all()
+
+
+def test_generate_candidates_reports_per_channel_rank_and_n_channels():
+    """A pair found only by the name channel gets a missing (=k) rank in addr, and vice versa;
+    n_channels counts only the non-'all' channels that actually retrieved the pair."""
+    s1 = normalize_frame(_frame([["S1-1", "Peak Highland Fast Inc", "3029 Veterans Parkway, Marshfield, WI", "US"]]),
+                          None)
+    pool = normalize_frame(_frame([
+        ["S3-9", "Peak Highland Fast", "", "US"],                                    # name-only match
+        ["S2-7", "Totally Different Biz", "3029 Veterans Pkwy, Marshfield, Wisconsin", "US"],  # addr-only match
+    ]), None)
+    c = generate_candidates(s1, pool, channels={"name": (NAME_FAMS, 5), "addr": (ADDR_FAMS, 5), "all": (FAMS, 10)},
+                            max_df=10, chunk=1, n_jobs=1)
+    r = c.set_index("pool_rid")
+    K_NAME, K_ADDR = 5, 5
+    assert r.loc[0, "rank_name"] < K_NAME and r.loc[0, "rank_addr"] == K_ADDR  # name found it, addr didn't
+    assert r.loc[1, "rank_addr"] < K_ADDR and r.loc[1, "rank_name"] == K_NAME  # addr found it, name didn't
+    assert r.loc[0, "n_channels"] == 1 and r.loc[1, "n_channels"] == 1  # each found by exactly one sub-channel
 
 
 def test_cross_keys_limits_and_min_length():

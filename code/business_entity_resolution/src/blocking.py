@@ -130,17 +130,33 @@ def _topk_rows(m, k):
 def _score_chunk(s_chunks, pt, ks, row0):
     """Score one S1 chunk in every channel; union the per-channel top-k pairs.
 
-    Returns (rows, cols, min rank over channels, [channel score of each pair]).
+    Returns (rows, cols, min rank over channels, [channel score of each pair],
+    [per-channel rank of each pair, sentinel = that channel's k when it didn't retrieve the pair]).
     """
     ms = [(s @ pt).tocsr() for s in s_chunks]
-    r, c, k = (np.concatenate(x) for x in zip(*(_topk_rows(m, kk) for m, kk in zip(ms, ks))))
+    per_ch = [_topk_rows(m, kk) for m, kk in zip(ms, ks)]  # per-channel (rows, cols, rank) before the union merge
+    r, c, k = (np.concatenate(x) for x in zip(*per_ch))
     order = np.lexsort((k, c, r))  # per (row, col): lowest rank first
     first = np.ones(len(order), bool)
     first[1:] = (np.diff(r[order]) != 0) | (np.diff(c[order]) != 0)
     sel = order[first]
     r, c, k = r[sel], c[sel], k[sel]
     scores = [np.asarray(m[r, c]).ravel() if len(r) else np.zeros(0, np.float32) for m in ms]
-    return row0 + r, c, k.astype(np.int16), scores
+
+    n = len(r)
+    width = pt.shape[1] + 1
+    final_key = r.astype(np.int64) * width + c.astype(np.int64)
+    order2 = np.argsort(final_key)
+    sorted_key = final_key[order2]
+    ranks = []
+    for j, (rr, cc, kk) in enumerate(per_ch):
+        rank_j = np.full(n, ks[j], np.int16)  # sentinel: this channel's own k = "not retrieved"
+        ch_key = rr.astype(np.int64) * width + cc.astype(np.int64)
+        pos = np.searchsorted(sorted_key, ch_key)
+        valid = (pos < n) & (sorted_key[np.minimum(pos, n - 1)] == ch_key)
+        rank_j[order2[pos[valid]]] = kk[valid]
+        ranks.append(rank_j)
+    return row0 + r, c, k.astype(np.int16), scores, ranks
 
 
 def score_column(channel):
@@ -156,18 +172,26 @@ def block_country(s1, pool, channels, max_df, weights, chunk, n_jobs):
     parts = Parallel(n_jobs=n_jobs)(
         delayed(_score_chunk)([s[i:i + chunk] for s in mats], pt, ks, i) for i in range(0, len(s1), chunk)
     )
-    r, c, k, scores = zip(*parts)
+    r, c, k, scores, ranks = zip(*parts)
     r, c = np.concatenate(r), np.concatenate(c)
     out = {"s1_rid": s1["rid"].to_numpy()[r], "pool_rid": pool["rid"].to_numpy()[c],
            "block_rank": np.concatenate(k)}
     for j, ch in enumerate(channels):
         out[score_column(ch)] = np.concatenate([p[j] for p in scores]).astype(np.float32)
+    n_channels = np.zeros(len(r), np.int16)
+    for j, ch in enumerate(channels):
+        rank_ch = np.concatenate([p[j] for p in ranks])
+        out[f"rank_{ch}"] = rank_ch
+        if ch != "all":
+            n_channels += (rank_ch < ks[j]).astype(np.int16)
+    out["n_channels"] = n_channels
     return pd.DataFrame(out)[candidate_columns(channels)]
 
 
 def candidate_columns(channels):
     """Ordered candidate-frame columns for a channel configuration."""
-    return CAND_COLS + [score_column(ch) for ch in channels if ch != "all"]
+    return (CAND_COLS + [score_column(ch) for ch in channels if ch != "all"]
+            + [f"rank_{ch}" for ch in channels] + ["n_channels"])
 
 
 def generate_candidates(s1n, pooln, s1_rids=None, topk=None, max_df=None, weights=None,

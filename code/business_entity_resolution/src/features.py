@@ -24,10 +24,32 @@ PY_FEATS = ["f_name_jac", "f_addr_jac", "f_nums_jac", "f_num1_eq", "f_legal_code
 
 
 def add_frequency_columns(s1n, pooln):
-    """Add log pool-frequency of name_core to both frames (how common a business name is)."""
+    """Add ambiguity/density stats to both frames: how common a record's exact name, first name
+    token and street key are in the pool, plus how many other S1 entities share this S1's exact name.
+
+    A common name needs address/number evidence to confirm identity; a rare one can carry more
+    weight on its own (docs/EDA_TEAMMATE.md singleton false-lead finding: 37.8% of singletons have
+    an exact same-name pool record). Blank street_key never counts as "shared" -- it means no
+    address data, not ambiguity, and would otherwise dominate as the most common value.
+    """
     vc = pooln["name_core"].value_counts()
     pooln["name_freq"] = np.log1p(pooln["name_core"].map(vc).to_numpy(np.float32))
     s1n["name_freq"] = np.log1p(s1n["name_core"].map(vc).fillna(0).to_numpy(np.float32))
+
+    first_tok = pooln["name_core"].str.split().str[0]
+    vc_tok = first_tok.value_counts()
+    pooln["first_tok_freq"] = np.log1p(first_tok.map(vc_tok).to_numpy(np.float32))
+    s1_first_tok = s1n["name_core"].str.split().str[0]
+    s1n["first_tok_freq"] = np.log1p(s1_first_tok.map(vc_tok).fillna(0).to_numpy(np.float32))
+
+    vc_street = pooln["street_key"].value_counts()
+    pooln["street_freq"] = np.log1p(pooln["street_key"].map(vc_street).to_numpy(np.float32))
+    s1n["street_freq"] = np.log1p(s1n["street_key"].map(vc_street).fillna(0).to_numpy(np.float32))
+    pooln.loc[pooln["street_key"] == "", "street_freq"] = 0.0
+    s1n.loc[s1n["street_key"] == "", "street_freq"] = 0.0
+
+    vc_s1name = s1n["name_core"].value_counts()
+    s1n["s1_name_dup"] = np.log1p((s1n["name_core"].map(vc_s1name) - 1).clip(lower=0).to_numpy(np.float32))
 
 
 def _jac(a, b):
@@ -84,6 +106,10 @@ def _features_chunk(c, s1n, pooln, generic, n_jobs):
     out["f_block_rank"] = c["block_rank"].to_numpy(np.float32)
     for col in c.columns[c.columns.str.startswith("score_")]:  # per-channel blocking scores
         out[f"f_{col}"] = c[col].to_numpy(np.float32)
+    for col in c.columns[c.columns.str.startswith("rank_")]:  # per-channel retrieval rank (missing = that
+        out[f"f_{col}"] = c[col].to_numpy(np.float32)          # channel's own k -- "not retrieved by it")
+    if "n_channels" in c.columns:  # how many channels' own top-k independently found this pair
+        out["f_n_channels"] = c["n_channels"].to_numpy(np.float32)
     out["f_is_s3"] = pooln["is_s3"].to_numpy()[ib].astype(np.float32)
     for side, frame, idx in (("a", s1n, ia), ("b", pooln, ib)):
         out[f"f_freq_{side}"] = frame["name_freq"].to_numpy()[idx].astype(np.float32)
@@ -91,6 +117,9 @@ def _features_chunk(c, s1n, pooln, generic, n_jobs):
         out[f"f_addr_empty_{side}"] = (frame["addr_norm"].take(idx) == "").to_numpy().astype(np.float32)
         out[f"f_land_{side}"] = (frame["landmark"].take(idx) != "").to_numpy().astype(np.float32)
         out[f"f_ntok_{side}"] = frame["name_core"].take(idx).str.count(" ").to_numpy().astype(np.float32) + 1
+        out[f"f_first_tok_freq_{side}"] = frame["first_tok_freq"].to_numpy()[idx].astype(np.float32)
+        out[f"f_street_freq_{side}"] = frame["street_freq"].to_numpy()[idx].astype(np.float32)
+    out["f_s1_dup_a"] = s1n["s1_name_dup"].to_numpy()[ia].astype(np.float32)  # S1-only: no pool equivalent
     return pd.DataFrame(out)
 
 
