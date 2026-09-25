@@ -6,19 +6,19 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 ## Current state (overwrite every shift)
 | Item | Value |
 |---|---|
-| Last updated | 2026-09-25 (planning shift) |
-| Next plan task | Task 1 (Phase 0 foundation) |
-| Best dev OOF F0.5 | — |
-| Dev blocking recall / cands per entity | — |
-| Transfer US→IN / IN→US | — |
-| Best public LB (exp id) | — |
+| Last updated | 2026-09-25 (post-MVP run) |
+| Next plan task | Investigate why `models2` is empty (stage-2 context model not training) |
+| Best dev OOF F0.5 | 0.94642 (exp E03, stage-1 only — m2 was None this run) |
+| Dev blocking recall / cands per entity | 0.9185 / 42.5 |
+| Transfer US→IN / IN→US | not computed (nan in log.csv — still owed per CLAUDE.md) |
+| Best public LB (exp id) | none — no upload spent yet |
 | Uploads used today (of 5) | D1: 0 · D2: 0 · D3: 0 |
-| Chosen decoder + params | — |
+| Chosen decoder + params | threshold, t_match=0.7, t_empty=0.3 |
 | Cache tag in use | v1 |
-| Running jobs (where, command, log file) | none |
-| SageMaker instance state (account owner) | not created |
-| Shared S3 bucket for cache/artifacts | not created |
-| Known bugs / blockers | none |
+| Running jobs (where, command, log file) | none (`mvp_run.log` / `mvp_run_err.log` at repo root from last background run) |
+| SageMaker instance state (account owner) | running — `ml.r5.4xlarge`, notebook `train.ipynb` executed through section 11 + local model/decoder save |
+| Shared S3 bucket for cache/artifacts | `aws-hack-sagemaker` created, **not yet writable** — notebook instance IAM role has no S3 permissions (`aws s3 cp` fails "Unable to locate credentials"); needs policy attach + instance stop/start |
+| Known bugs / blockers | (1) `models2` empty -> stage-2 context model never trained, run fell back to stage-1-only scoring; root cause not yet traced. (2) S3 push blocked on IAM role (see above). |
 
 ## Credits tracker (each teammate has their own AWS account)
 | Member | AWS plan (Free/Paid) | Credits left | Instance quota ok? | Notes |
@@ -60,6 +60,21 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 4. **France risk**: 45% of France name tokens unseen in train (the US↔IN proxy only shows 28–36%) → prefer char-level similarity; rarity/frequency stats computed on the test pool per country (already the case).
 
 ## Shift entries (newest first)
+### 2026-09-25 — MVP run (stage-1 only)
+- Ran `train.ipynb` end-to-end on `ml.r5.4xlarge`: normalized, blocked (B03 multi-channel,
+  recall 0.9185, 42.5 cands/entity), scored 74,992,735 test pairs, decoded, wrote outputs.
+- Validator PASS: 1,732,544/1,732,544 S1 rows (122,399 empty, 1,610,145 non-empty). Not yet
+  run with `--check-ids`.
+- Local OOF f05_all = 0.94642 (matches exp E03 exactly — this run's `models2` came back empty,
+  so `m2` was `None` and scoring fell back to stage-1-only; stage-2 context features were not
+  applied). Numbers not yet logged as their own row in `experiments/log.csv`.
+- Saved `m1_stage1.txt` + `{tag}_decoder.json` to instance-local `cache/` (no `m2_stage2.txt`
+  since m2 is None). S3 push to `aws-hack-sagemaker` fails on missing IAM creds — see blockers.
+- No LB upload made — outputs and models exist locally on the instance only.
+- Next: (1) find why `models2` is empty and fix stage-2 training, (2) fix notebook instance IAM
+  role for S3, (3) log this run properly in `experiments/log.csv`, (4) compute US↔IN transfer,
+  (5) decide whether to spend first real upload.
+
 ### 2026-09-25 — planning
 - Done: EDA (singletons 5.6%, one-to-one exact, 0 cross-country pairs, France = 15% of test S1),
   design spec, implementation plan, CLAUDE.md, README, requirements.

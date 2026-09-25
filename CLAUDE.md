@@ -114,7 +114,8 @@ Sanity check: pred {a,b,x}, true {a,b} -> 0.714.
 5 uploads/day, 15 total. Public LB = subset; final rank = private LB.
 * Always run the validator before uploading; never spend an upload on a format error.
 * Upload only on a meaningful local gain, or to test France behaviour (e.g. same file with France rows emptied vs. predicted).
-* Pick the final submission by local OOF + cross-country robustness, not public LB.
+* Pick the final submission by local OOF + cross-country robustness + public LB together (guidelines: shortlisting uses both leaderboards; final rank = private). Don't chase small public-LB-only gains.
+* After each upload, confirm the portal shows SCORED status before archiving.
 
 ## Do not
 * Do not add network calls or external datasets to the pipeline.
@@ -126,8 +127,11 @@ Sanity check: pred {a,b,x}, true {a,b} -> 0.714.
 ## Current status (update as you go)
 * [x] EDA answers: singleton rate = 5.6%, one-to-one holds = yes (0 of 7.6M pool ids shared), cross-country matches = 0
 * [x] Design spec + implementation plan written (docs/superpowers/)
-* [ ] E00 all-empty submission: public LB = ?
+* [ ] E00 all-empty submission: public LB = ? (no upload spent yet)
 * [ ] Fuzzy baseline: local = ?, public = ?
-* [ ] LightGBM stage 1 / stage 2
-* [ ] Decision layer tuned
+* [x] LightGBM stage 1 (dev OOF f05_all = 0.94642, exp E03) / [ ] stage 2 (blocked: `models2` comes back
+      empty on the last full run so `m2` is `None` and scoring falls back to stage-1-only — root cause
+      not yet traced, see HANDOFF.md blockers)
+* [x] Decision layer tuned: threshold decoder, t_match=0.7, t_empty=0.3 (exp E03); US↔IN transfer still
+      not computed
 * [ ] Packaging + README + methodology doc

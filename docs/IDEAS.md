@@ -134,7 +134,23 @@ One experiment per idea, logged in `experiments/log.csv`. Keep an idea only if d
 | Diagnostic upload: same file with France rows emptied vs predicted | 🧪 | measures France contribution on the public LB | we have a spare upload on Day 2 |
 | Adversarial validation (train vs test France) to find shifted features | 🧪 | flags features that behave differently | time allows |
 
-### B.8 Rejected ideas
+### B.8 From peer review (teammate's external analysis, 25 Sep)
+| Idea | Status | Rationale / evidence | Adopt if |
+|---|---|---|---|
+| **Test one-to-one instead of assuming it:** U0 none / U3 hard assignment (optionally U1 as a feature, U2 soft penalty) | ⏭ | train shows 0 shared ids, but the problem statement never states it as a rule; if test breaks it, hard one-to-one silently drops true matches. Cheap: a decoder flag | keep hard one-to-one only if it beats "none" on OOF (it's already a stage-2 feature, `f2_best_other`) |
+| **Retrieval-evidence features:** per-channel rank (name/addr/all), `n_channels` that retrieved the pair, best rank | ⏭ | a candidate found by 3 channels differs from one found by a single weak channel; we only pass channel scores today | dev ↑ |
+| **Character n-gram retrieval channel** (TF-IDF char 3–4 grams, batched per country) | ⏭ (after cross-keys are measured) | typos/OCR ("Vanto1a", "Bhcfcle") break word keys; 70% of misses are ranking losses | recall ↑ at acceptable cost |
+| **Recall@K curve + adaptive budget** (bigger K for ambiguous or weak-field entities) | ⏭ | K should come from data, not be fixed | recall ↑ per candidate |
+| **Ambiguity / density features:** pool records sharing the exact normalized name, sharing the first token, sharing the street key; S1 names shared with other S1s | ⏭ | EDA: 48–54% of S1 share their exact name → the model should know how ambiguous a name is | dev ↑ (FP ↓) |
+| **City/locality conflict feature** (both have a city-like token set, disjoint) | 🧪 | contradiction signal; postcode is dead in this data so location must come from tokens | FP ↓ |
+| **Entity-level summary for the decision** (max, 2nd, 3rd score, gaps, #high scores, density) → a small "zero / one / many" model feeding the decoder | 🧪 | stage 2 already carries part of this; could sharpen singleton calls (singletons 0.958 dev) | singleton F0.5 ↑ without hurting matched |
+| **Hard-negative mining loop:** retrain adding high-confidence false positives from OOF | 🧪 | same model gets stronger; no new system | dev FP ↓ |
+| **Raw-view similarity features** (rapidfuzz on lower-cased raw name/address alongside normalized) | 🧪 | normalization can create collisions ("ABC Engineering Services Ltd" vs "ABC Engineering Pvt Ltd") | dev ↑ |
+| **Fast dev preset** (stratified ~2% of S1, ~40k entities, ~5 min per run) for idea screening; confirm winners on the 10% dev | ⏭ | the 10% dev loop costs ~40 min; more experiments per shift | — |
+| Country as a model feature | ❌ (we disagree) | the review allows it; our CLAUDE.md forbids it, because France has no training rows, so the feature has no meaning for 15% of test | — |
+| Switch to DuckDB/Polars | ❌ | our pyarrow loading + parquet caches already run within 16 GB; switching costs time with no score gain | — |
+
+### B.9 Rejected ideas
 | Idea | Why rejected |
 |---|---|
 | LLM as the matcher | slow at 70M pairs; CLAUDE.md says models are features at most; licence/size limits |
