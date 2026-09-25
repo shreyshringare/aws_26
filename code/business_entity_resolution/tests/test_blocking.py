@@ -156,14 +156,14 @@ def test_recall_at_ks_matches_generate_candidates_per_k_and_sweeps_monotonically
 
     rep = recall_at_ks(s1, pool, pos, ks=[1, 2, 3], max_df=10, chunk=2, n_jobs=1)
     assert set(rep) == {1, 2, 3}
-    assert rep[1]["recall"] < rep[2]["recall"] == rep[3]["recall"] == 1.0
+    assert rep[1]["pair_recall"] < rep[2]["pair_recall"] == rep[3]["pair_recall"] == 1.0
     assert rep[1]["cands_per_entity"] < rep[2]["cands_per_entity"] == rep[3]["cands_per_entity"]
 
     for k in (1, 2, 3):
         c = generate_candidates(s1, pool, channels={"all": (FAMS, k)}, max_df=10, chunk=2, n_jobs=1)
         hit = sum(1 for _, r in pos.iterrows()
                   if ((c.s1_rid == r.s1_rid) & (c.pool_rid == r.pool_rid)).any())
-        assert rep[k]["recall"] == hit / len(pos)
+        assert rep[k]["pair_recall"] == hit / len(pos)
         assert rep[k]["cands_per_entity"] == len(c) / len(s1)
 
 
@@ -174,8 +174,17 @@ def test_recall_at_ks_no_shared_keys_returns_zero_recall_and_zero_cands():
     pool = normalize_frame(_frame([["S2-1", "Totally Different Biz", "Other Place", "France"]]), None)
     pos = pd.DataFrame({"s1_rid": [0], "pool_rid": [0]})
     rep = recall_at_ks(s1, pool, pos, ks=[1, 5], max_df=10, chunk=2, n_jobs=1)
-    assert rep[1] == {"recall": 0.0, "cands_per_entity": 0.0}
-    assert rep[5] == {"recall": 0.0, "cands_per_entity": 0.0}
+    assert rep[1] == {"pair_recall": 0.0, "cands_per_entity": 0.0}
+    assert rep[5] == {"pair_recall": 0.0, "cands_per_entity": 0.0}
+
+
+def test_recall_at_ks_empty_ks_returns_empty_dict():
+    """An empty `ks` has nothing to sweep; recall_at_ks must return {} rather than crash on
+    `ks[-1]` (reported bug: bare IndexError on ks=[])."""
+    s1 = normalize_frame(_frame([["S1-1", "Zzz Unique Corp", "1 Nowhere Ln", "US"]]), None)
+    pool = normalize_frame(_frame([["S2-1", "Zzz Unique Corp", "1 Nowhere Ln", "US"]]), None)
+    pos = pd.DataFrame({"s1_rid": [0], "pool_rid": [0]})
+    assert recall_at_ks(s1, pool, pos, ks=[], max_df=10, chunk=2, n_jobs=1) == {}
 
 
 def test_recall_at_ks_channel_param_restricts_scoring_families():
@@ -189,5 +198,5 @@ def test_recall_at_ks_channel_param_restricts_scoring_families():
     pos = pd.DataFrame({"s1_rid": [0], "pool_rid": [0]})
     addr_only = recall_at_ks(s1, pool, pos, ks=[1], fams=ADDR_FAMS, max_df=10, chunk=2, n_jobs=1)
     name_only = recall_at_ks(s1, pool, pos, ks=[1], fams=NAME_FAMS, max_df=10, chunk=2, n_jobs=1)
-    assert addr_only[1]["recall"] == 1.0  # address overlaps despite unrelated names
-    assert name_only[1]["recall"] == 0.0  # no name overlap at all
+    assert addr_only[1]["pair_recall"] == 1.0  # address overlaps despite unrelated names
+    assert name_only[1]["pair_recall"] == 0.0  # no name overlap at all

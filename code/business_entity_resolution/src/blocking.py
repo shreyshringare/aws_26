@@ -223,12 +223,17 @@ def recall_at_ks(s1n, pooln, pos, ks, s1_rids=None, fams=None, max_df=None, weig
 
     `s1n`/`pooln` are normalized frames (as from `normalize.normalize_frame`). `pos` is the
     ground-truth positive pairs as a frame with `s1_rid`/`pool_rid` columns in the same rid space
-    as `s1n["rid"]`/`pooln["rid"]` (e.g. `run_pipeline.gt_rid_pairs`). `ks` is any iterable of
-    positive ints; a single channel is scored (`fams`, default all families -- pass e.g.
-    `config.ADDR_FAMS` to measure "what if I raised K on the addr channel").
+    as `s1n["rid"]`/`pooln["rid"]` (e.g. `run_pipeline.gt_rid_pairs`). `ks` is a non-empty iterable
+    of positive ints (an empty `ks` returns `{}` -- there is nothing to sweep); a single channel is
+    scored (`fams`, default all families -- pass e.g. `config.ADDR_FAMS` to measure "what if I
+    raised K on the addr channel").
 
-    Returns {k: {"recall": .., "cands_per_entity": ..}} for every k in `ks`.
+    Returns {k: {"pair_recall": .., "cands_per_entity": ..}} for every k in `ks` (key name matches
+    `evaluate.blocking_report`'s "pair_recall").
     """
+    ks = sorted(set(int(k) for k in ks))
+    if not ks:
+        return {}
     fams = fams or FAMS
     max_df = max_df or config.BLOCK_MAX_DF
     weights = weights or config.BLOCK_W
@@ -236,7 +241,6 @@ def recall_at_ks(s1n, pooln, pos, ks, s1_rids=None, fams=None, max_df=None, weig
     n_jobs = n_jobs or config.N_JOBS
     if s1_rids is not None:
         s1n = s1n[s1n["rid"].isin(s1_rids)]
-    ks = sorted(set(int(k) for k in ks))
     kmax = ks[-1]
     fw = np.array([weights[f] * (f in fams) for f in FAMS], np.float32)
     n_entities = len(s1n)
@@ -247,6 +251,8 @@ def recall_at_ks(s1n, pooln, pos, ks, s1_rids=None, fams=None, max_df=None, weig
         b = pooln[pooln["country"] == c].reset_index(drop=True)
         if not (len(a) and len(b)):
             continue
+        # build_index is written for multiple channels at once; [fw] gives it exactly one channel's
+        # weights, and mats[0] below unwraps that single scored matrix back out.
         mats, pt = build_index(hash_frame(a, n_jobs), hash_frame(b, n_jobs), len(a), len(b), max_df, [fw])
         parts = Parallel(n_jobs=n_jobs)(
             delayed(_topk_chunk)(mats[0][i:i + chunk], pt, kmax, i) for i in range(0, len(a), chunk)
@@ -259,7 +265,7 @@ def recall_at_ks(s1n, pooln, pos, ks, s1_rids=None, fams=None, max_df=None, weig
         rank_parts.append(rk)
 
     if not s1_rid_parts:
-        return {k: {"recall": 0.0, "cands_per_entity": 0.0} for k in ks}
+        return {k: {"pair_recall": 0.0, "cands_per_entity": 0.0} for k in ks}
 
     s1_rid = np.concatenate(s1_rid_parts)
     pool_rid = np.concatenate(pool_rid_parts)
@@ -286,7 +292,7 @@ def recall_at_ks(s1n, pooln, pos, ks, s1_rids=None, fams=None, max_df=None, weig
     for k in ks:
         hit = int((pos_rank < k).sum()) if n_pos else 0
         n_cands = int((rank < k).sum())
-        out[k] = {"recall": hit / max(n_pos, 1), "cands_per_entity": n_cands / max(n_entities, 1)}
+        out[k] = {"pair_recall": hit / max(n_pos, 1), "cands_per_entity": n_cands / max(n_entities, 1)}
     return out
 
 

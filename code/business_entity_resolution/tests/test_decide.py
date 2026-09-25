@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 
+from src import config
 from src.decide import apply_decoder, one_to_one, select_expected_f05, select_threshold, tune
 
 
@@ -64,7 +65,6 @@ def test_tune_grid_doubles_over_one_to_one_and_tags_every_result():
     so the result list is exactly twice as long as before, and every dec carries a real bool flag."""
     d = _df([[0, 7, 0.9], [1, 7, 0.6], [1, 8, 0.8]])
     best, results = tune(d, None, 0.0, scorer=len)
-    from src import config
     n_base = (len(config.GRID_T_MATCH) * len(config.GRID_T_EMPTY)) + (len(config.GRID_TAU) * len(config.GRID_LAM))
     assert len(results) == 2 * n_base
     assert all(isinstance(dec.get("one_to_one"), bool) for _, dec in results)
