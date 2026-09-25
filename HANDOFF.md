@@ -6,19 +6,20 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 ## Current state (overwrite every shift)
 | Item | Value |
 |---|---|
-| Last updated | 2026-09-25 (post-MVP run) |
-| Next plan task | Investigate why `models2` is empty (stage-2 context model not training) |
-| Best dev OOF F0.5 | 0.94642 (exp E03, stage-1 only — m2 was None this run) |
+| Last updated | 2026-09-25 (post-first-upload) |
+| Next plan task | Merge `worktree-agent-a0b1edbe6ec982855` (Prompt 3) — `src/context.py` on feat/pipeline is a stub, blocks real stage 2 |
+| Best dev OOF F0.5 | 0.94642 (exp E03, stage-1 only — `NO_STAGE2=True`, stage-2 code not merged yet) |
 | Dev blocking recall / cands per entity | 0.9185 / 42.5 |
 | Transfer US→IN / IN→US | not computed (nan in log.csv — still owed per CLAUDE.md) |
-| Best public LB (exp id) | none — no upload spent yet |
-| Uploads used today (of 5) | D1: 0 · D2: 0 · D3: 0 |
+| Best public LB (exp id) | **0.942 (exp E03, tag sub-d1-01)** — first real upload |
+| Uploads used today (of 5) | D1: 1 · D2: 0 · D3: 0 |
 | Chosen decoder + params | threshold, t_match=0.7, t_empty=0.3 |
 | Cache tag in use | v1 |
 | Running jobs (where, command, log file) | none (`mvp_run.log` / `mvp_run_err.log` at repo root from last background run) |
 | SageMaker instance state (account owner) | running — `ml.r5.4xlarge`, notebook `train.ipynb` executed through section 11 + local model/decoder save |
 | Shared S3 bucket for cache/artifacts | `aws-hack-sagemaker` created, **not yet writable** — notebook instance IAM role has no S3 permissions (`aws s3 cp` fails "Unable to locate credentials"); needs policy attach + instance stop/start |
-| Known bugs / blockers | (1) `models2` empty -> stage-2 context model never trained, run fell back to stage-1-only scoring; root cause not yet traced. (2) S3 push blocked on IAM role (see above). |
+| Known bugs / blockers | (1) `src/context.py` on feat/pipeline is a docstring stub — real stage-2 code only on unmerged `worktree-agent-a0b1edbe6ec982855` (commit `61efe0b`); do not flip `NO_STAGE2=False` until merged. (2) S3 push blocked on IAM role (see above). |
+| Target | 0.942 → 0.985+ requested. See `docs/NEXT_STEPS.md` ranked plan; realistic ceiling is blocking-recall-bound, treat 0.985 as "push as far as possible." |
 
 ## Credits tracker (each teammate has their own AWS account)
 | Member | AWS plan (Free/Paid) | Credits left | Instance quota ok? | Notes |

@@ -2,11 +2,14 @@
 
 Source: independent EDA by a teammate (full dataset, deterministic blocking benchmark + normalization +
 ground-truth topology). Numbers cross-validated against our own `docs/EDA.md` and found consistent
-(singleton rate 5.585% vs our 5.6%, mean matches/S1 3.461 vs our ~3.5, max 11, France ~15% of test/absent
-from train — all match). Treated as real evidence, not just a second opinion. Full report content is in
-chat history (25 Sep, ~14:50 IST); raw artifacts (`hard_negatives.csv`, `positive_pairs.tsv.gz`,
-`false_collision_examples.csv`, `singleton_candidate_load_all.csv.gz`, `analysis/` scripts) are NOT yet
-in this repo — see item 5.
+(singleton rate 5.58% vs our 5.6%, mean matches/S1 3.46 vs our ~3.5, max 11, France ~15% of test/absent
+from train — all match). Treated as real evidence, not just a second opinion. The **full** report (48
+files, all sections, evidence-level tags) is now written up in `docs/EDA_TEAMMATE.md` — this document
+summarizes the actionable deltas; go there for the underlying tables and the EXACT/SAMPLE/PILOT/
+UNVERIFIED evidence audit (§0 and §13 there) before quoting any number in the methodology doc. Raw data
+artifacts (`hard_negatives.csv`, `positive_pairs.tsv.gz`, `false_collision_examples.csv`,
+`singleton_candidate_load_all.csv.gz`, `analysis/` scripts — full index in `docs/EDA_TEAMMATE.md`
+Appendix) are still NOT in this repo — see item 5.
 
 Ranked by expected impact. One change per experiment per `CLAUDE.md`; log every run in
 `experiments/log.csv`.
@@ -68,27 +71,29 @@ pipeline run needed). Full taxonomy work waits for Prompt 7.
 
 ---
 
-## 4. Resolve the normalization-as-identity-key disagreement (needs discussion, not a silent change)
+## 4. Normalization-as-identity-key — now resolved, has a concrete experiment (was: needs discussion)
 
-**Finding:** Teammate recommends NFKC + casefold + punctuation/whitespace-only for blocking *identity*
-keys, treating abbreviation expansion and token-sorting as scoring features only — because abbreviation
-normalization grows their collision groups 226→429 (measured on their 35K-row sample). Our `blocking.py`
-does the opposite: abbreviation-normalized `name_core`/`legal`-split tokens are blocking key families
-(`n`, `nb`, `nm`, `np`, `nc`, `n2`) directly.
+**Finding, now with full methodology (`docs/EDA_TEAMMATE.md` §9, their own normalization-collision
+study, SAMPLE, 35,000 records):** their collision groups grow raw 226 → conservative (NFKC + casefold +
+punctuation/whitespace) 389 → abbreviation-expanded 429 → token-sorted 436. Their own explicit
+recommendation: conservative normalization for blocking *identity keys*, abbreviation expansion and
+token-sorting for *scoring features only*. Our `blocking.py` does the opposite — abbreviation-normalized
+`name_core`/`legal`-split tokens are blocking key families (`n`, `nb`, `nm`, `np`, `nc`, `n2`) directly.
 
-**This is a real architectural difference, not obviously wrong on our side** — our blocking weights keys
-by IDF rarity and drops keys with document frequency > `BLOCK_MAX_DF=2000` (`config.py`), which is a
-different mitigation for the same collision-inflation problem they're describing for naive exact-match
-blocking. But it's worth confirming this actually holds at our current recall level rather than assuming.
+This is a real architectural difference, not obviously wrong on our side — our blocking weights keys by
+IDF rarity and drops keys with document frequency > `BLOCK_MAX_DF=2000` (`config.py`), a different
+mitigation for the same collision-inflation problem. But their study was measured on **raw sample
+collision-group counts**, not on retrieval recall through an IDF-weighted union — it doesn't directly
+prove our approach is wrong, just that the risk they're describing is real and measured.
 
-**Action:** Don't change normalize.py or blocking key families based on this alone. Instead:
-1. Ask the teammate exactly what blocking method they measured the 226→429 collision-group growth on
-   (naive exact-match vs. our IDF-weighted union) — if it's the former, it may not transfer.
-2. If there's time after the B04-B06 blocking work, a cheap check: does removing abbreviation-normalized
-   families from the blocking union change recall/cands-per-entity at same config? That's answerable in
-   one experiment run.
+**Action — no longer blocked on a teammate sync, this is now a one-experiment check** (also written up
+as part of `docs/PROMPTS.md` Prompt 8): after the Prompt 4 blocking work lands, run the blocking union
+with abbreviation-normalized families removed (keep them as scoring features only, per their
+recommendation) and compare recall/cands-per-entity against the Prompt-4 best. Keep whichever wins.
 
-**Owner/next step:** Sync with the teammate directly before touching `normalize.py` or `config.BLOCK_W`.
+**Owner/next step:** Fold into the Prompt 8 (normalization v2) run — no separate sync needed now that
+their full methodology is documented, though still worth telling them we're testing their exact
+recommendation.
 
 ---
 
@@ -97,7 +102,41 @@ blocking. But it's worth confirming this actually holds at our current recall le
 Everything above except item 1 is blocked on actually having the teammate's generated files, not just
 the summary numbers. `aws-hack-sagemaker` (the shared S3 bucket) already exists — ask them to
 `aws s3 sync analysis/ s3://aws-hack-sagemaker/eda-teammate/` (or similar) once their bucket-policy access
-is confirmed working.
+is confirmed working. Full expected file list is in `docs/EDA_TEAMMATE.md` Appendix (48 files): the CSVs/
+tables referenced throughout that doc, plus `positive_pairs.tsv.gz` (336 MB, not yet opened by anyone),
+`cache/token_stats.json`, and the `analysis/*.py` scripts themselves (`run_eda.py` is their main exact
+pipeline; the Brahmi transliterator lives in `run_retrieval_benchmark.py`).
+
+## 6. Singleton false-positive risk — feeds the empty-gate design directly
+
+**Finding (`docs/EDA_TEAMMATE.md` §8, EXACT, full 123,247 train singletons):** 37.8% of singletons have
+an *exact* same-name candidate in the same country, and only 3.0% have an exact same-address candidate.
+`hard_singletons.csv` shows deceptive best-candidates with name similarity 0.83–0.99. An exact name match
+is explicitly **not** evidence of identity for a no-match entity — address and numeric agreement have to
+confirm it.
+
+**Action:** when re-tuning the decision layer (empty gate / t_empty) after stage 2 lands, check the
+singleton slice specifically against this — the gate should fire on absence of address/number support,
+not on name-similarity alone. This is a design constraint for `decide.py`, not just a feature idea.
+
+**Owner/next step:** fold into the decoder re-tune step once stage-2 (`docs/NEXT_STEPS.md` item 2/3) is
+running for real.
+
+## 7. Two concrete feature gaps (checked against our own `features.py`, not just their numbers)
+
+Cross-checked their §5/§7 recommendations against what's actually implemented. Most already exist
+(`is_s3`, legal-form agreement, name IDF, numeric Jaccard, address-empty flags) — two real gaps found:
+
+1. **Near-miss number flag** — not implemented. Their dominant distractor pattern (`hard_negatives.csv`)
+   is small numeric edit distance ("511 Yacht Drive" vs "513 Yacht Drive"), which current features don't
+   distinguish from "numbers agree" (Jaccard catches exact overlap) or "no numbers" (missing flag).
+2. **Address-missing → 0, not NaN**, in similarity features when one side has no address. The
+   `f_addr_empty_{a,b}` flags exist so the model can partly compensate, but worth testing whether NaN
+   (LightGBM handles it natively) changes anything, since right now a missing address scores identically
+   to a maximally different one on the raw similarity columns.
+
+**Action:** written up as an optional E04b step in `docs/PROMPTS.md` Prompt 5 — add both, report whether
+either moves f05_all before committing to them.
 
 ---
 
@@ -105,4 +144,6 @@ is confirmed working.
 
 - Any of their deterministic blocking strategies as a replacement for our sparse IDF union — already
   shown to be far less efficient at comparable recall (item 1).
-- Reworking normalize.py identity keys immediately (item 4) — discussion first.
+- Citing PILOT-tagged numbers (99.7% recall @ K=25, exclusivity +0.005) or UNVERIFIED hard-coded claims
+  (Indic script share, URL substitution rate, channel-agreement 3.1 vs 1.1) in the methodology doc —
+  see `docs/EDA_TEAMMATE.md` §0/§13 evidence audit. Re-measure on full data first if we want to use them.

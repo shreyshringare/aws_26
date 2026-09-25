@@ -4,20 +4,47 @@ Run these in order. Each prompt is self-contained: paste it into a Claude Code s
 `D:\AWS_HACK\student_resource` (or the SageMaker checkout). Do one prompt per session or per shift.
 Before starting, check `HANDOFF.md` → "Current state" to see which step is next.
 
-State at the time of writing (25 Sep, ~09:50 IST):
-- MVP code works: dev OOF F0.5 = 0.9464 (US 0.957, India 0.931, singletons 0.958), blocking recall 0.9185.
-- **No real predictions file yet.** `output/` holds only the all-empty E00 placeholder (never uploaded).
-- The first full test run crashed in blocking (WinError 1450, too many worker processes). Fix committed in `0acf8f7` (`ER_LGB_JOBS` separate from `ER_JOBS`).
-- The four improvements are committed on branch `worktree-agent-a0b1edbe6ec982855` but not measured yet.
+State at the time of writing (25 Sep, updated post-MVP-run):
+- MVP code works: dev OOF F0.5 = 0.94642 (exp E03; US 0.95648, India 0.93133, singletons 0.95802),
+  blocking recall 0.9185 at 42.5 cands/entity (exp B03).
+- **Real predictions file now exists**, produced on SageMaker (`ml.r5.4xlarge`) via
+  `code/business_entity_resolution/notebooks/train.ipynb`, not via the Prompt 1B CLI path below — that
+  path is still valid/reproducible but wasn't what actually ran this time. Validator PASS: 1,732,544/
+  1,732,544 test S1 rows (122,399 empty, 1,610,145 non-empty), France included. **Still not uploaded to
+  the portal** — 0/5 uploads used today. This run is stage-1 only: `NO_STAGE2=True` in the notebook.
+- Models + decoder saved locally on the SageMaker instance (`cache/m1_stage1.txt`,
+  `cache/{tag}_decoder.json`) via a new notebook section 12. **Not yet in S3** — the notebook instance's
+  IAM role has no S3 permissions (`aws s3 cp` → "Unable to locate credentials"); needs a policy attach +
+  instance stop/start before `aws-hack-sagemaker` is usable. This does NOT block portal upload or
+  `archive_submission.py` (below) — only the S3 backup/sharing step.
+- ⚠️ **`src/context.py` on `feat/pipeline` is a one-line stub** (`"""Stage-2 group, competition and
+  triangle-support features (implemented in Phase 4)."""` — no code). The real stage-2 implementation
+  only exists on the unmerged branch `worktree-agent-a0b1edbe6ec982855`. **Do not flip `NO_STAGE2=False`
+  or run Prompt 6 before Prompt 3 (the merge) lands** — it would call an unimplemented function.
+- The first full test run crashed in blocking (WinError 1450, too many worker processes). Fix committed
+  in `0acf8f7` (`ER_LGB_JOBS` separate from `ER_JOBS`).
+- The four improvements (stage-2, sampling, na cross keys, wider decoder grids) are committed on branch
+  `worktree-agent-a0b1edbe6ec982855` but not merged or measured yet — see Prompt 3, now higher priority.
+- Full teammate EDA cross-validation is written up: `docs/EDA_TEAMMATE.md` (48-file source, evidence-level
+  tags), consolidated into `docs/IMPROVEMENT_PLAN.md` and the ranked `docs/NEXT_STEPS.md`. Read
+  `docs/NEXT_STEPS.md` for the current priority order and its Warnings/Leads sections before picking a
+  prompt below — several prompts here (4, 5, 8) already have teammate-EDA context folded in.
 - **Portal rules (guidelines):** each teammate uses only their own login on one laptop or desktop (no simultaneous logins, no mobile). Max 5 uploads per team per day, and every upload is archived (version history is used for shortlisting). Ask questions via the organisers' Google Form; they won't make decisions for us.
 - ⚠️ **Only one session may run the pipeline at a time.** A full run needs most of the 16 GB of RAM; two parallel runs both crash. Check with `Get-Process python` first.
 
 ## ▶ Start here (visible progress path)
 1. **Prompt 0** (session start) → shows where things stand.
 2. **Prompt N0** (dashboard notebook) → build once; re-run it after every step to *see* progress (score chart, blocking recall, live run log, uploads).
-3. **Prompts 1A → 1D** → the MVP file, ready to upload. Open `notebooks/01_run_mvp.ipynb` to follow each stage live.
-4. **You upload** → **Prompt 2** records the score, and the dashboard shows it.
-5. Then Prompts 3 → 14, one per session, refreshing the dashboard after each.
+3. **Prompts 1A → 1D** → already effectively done (via `train.ipynb` on SageMaker instead of this CLI
+   path — validator PASS, output ready). Skip straight to **Prompt 2** unless you need to reproduce via
+   CLI, or Prompt 1C's QA report (`docs/QA_E03r.md`) hasn't been written yet — do that first if missing.
+4. **You upload** → **Prompt 2** records the score, and the dashboard shows it. First real upload of
+   the day (0/5 used) — tag should be `sub-d1-01`, not `sub-d1-02`.
+5. **Prompt 3 (merge the stage-2 branch) is now higher priority than before** — `src/context.py` on
+   `feat/pipeline` is a stub; nothing that depends on real stage 2 (Prompt 6, or flipping
+   `NO_STAGE2=False` in the notebook) works until this merge lands.
+6. Then Prompts 4 → 14, one per session, refreshing the dashboard after each. See `docs/NEXT_STEPS.md`
+   for the fuller ranked priority order once past Prompt 3.
 
 Where progress shows up: `notebooks/00_dashboard.ipynb` (charts), `experiments/log.csv` (every run), `HANDOFF.md` (current state), `submissions/` (every upload), `git log`.
 
@@ -57,8 +84,15 @@ uncommitted changes, running jobs, and the next step in docs/PROMPTS.md. Don't c
 ```
 
 ## MVP phase: from working code to a file ready for the portal (Prompts 1A–1D)
-The MVP is the stage-1 pipeline that is already built and measured (dev OOF F0.5 0.9464). These four
-prompts only run it, check it and package it. **No model or feature changes until the first upload is done.**
+The MVP is the stage-1 pipeline that is already built and measured (dev OOF F0.5 0.94642, exp E03). These
+four prompts only run it, check it and package it. **No model or feature changes until the first upload is
+done.**
+
+**Status: effectively done, via a different path.** The actual run happened in
+`notebooks/train.ipynb` on the SageMaker instance (not this CLI sequence) — output exists, validator
+PASSED (1,732,544/1,732,544 rows). These prompts remain valid if you need to reproduce via CLI, but skip
+to Prompt 1C to check whether `docs/QA_E03r.md` exists yet (it likely doesn't — the notebook path didn't
+write it), then Prompt 1D/Prompt 2 for the actual upload.
 
 ### Prompt 1A — Pre-flight check
 ```
@@ -130,12 +164,15 @@ Don't upload anything yourself.
 ```
 I uploaded output/matching_results.tsv to the portal; status = <SCORED or error text>, public LB = <SCORE>.
 If the status is not SCORED, stop and diagnose the format against the problem statement (don't archive).
-Run: python code/business_entity_resolution/scripts/archive_submission.py --tag sub-d1-02 --exp-id E03r --public-lb <SCORE>
-Put public_lb into the E03r row of experiments/log.csv, update HANDOFF.md (Current state, uploads used today),
+Run: python code/business_entity_resolution/scripts/archive_submission.py --tag sub-d1-01 --exp-id E03 --public-lb <SCORE>
+Put public_lb into the E03 row of experiments/log.csv, update HANDOFF.md (Current state, uploads used today),
 and commit.
+Note: archive_submission.py only copies output/ into submissions/<tag>/ and git-tags the commit — it does
+NOT push to S3 itself (its docstring says "sync it to the team S3 bucket" as a separate manual step).
+The S3 IAM-role blocker on the SageMaker instance does not block this prompt.
 ```
 
-## Prompt 3 — Merge the measured-later improvements
+## Prompt 3 — Merge the measured-later improvements (now a hard prerequisite for stage 2)
 ```
 Merge branch worktree-agent-a0b1edbe6ec982855 into feat/pipeline. It contains:
 na name×address cross keys + EDA weights (drop postcode family); num_conflict and acronym features
@@ -144,6 +181,12 @@ country × match-count bin, hard-negative training rows with weights); stage 2 i
 wider decoder grids.
 Resolve conflicts, keeping the LGB_JOBS config change from feat/pipeline. Run the full test suite.
 Commit. Then remove the worktree (git worktree remove) once merged. Don't run the pipeline.
+
+Confirmed by checking both branches directly: feat/pipeline's src/context.py is currently a one-line
+docstring stub with no implementation; the worktree branch (commit 61efe0b, "feat: stage-2 context,
+competition and triangle-support features") has the real group_context/triangle-support code. Until this
+merges, do NOT set NO_STAGE2=False in train.ipynb or run Prompt 6 — context.add_stage2_features would
+call an unimplemented function.
 ```
 
 ## Prompt 4 — Blocking experiments (recall ceiling)
@@ -156,6 +199,12 @@ Runs: B04 = EDA weights only (disable the na family); B05 = + na cross keys; B06
 on the channel that gains most.
 Report a table: exp, recall, cands/entity, runtime, peak RAM. Keep the best config with cands/entity ≤ 60
 and commit it. Then run the miss diagnosis (plan Task 9 Step 4) and summarise the remaining miss types.
+
+Reference point (docs/EDA_TEAMMATE.md §10, EXACT full-train, deterministic union not our IDF-weighted
+kNN so not directly comparable — but a sanity anchor): exact name+address+postal = 31.9% recall at ~11
+cands/S1; + rare address token = 78.7% at 231; + rare name token = 90.5% at 2,075; everything = 96.3% at
+11,231. Our sparse IDF union already beats this efficiency (B03: 91.85% at 42.5) — the target is closing
+the last few points of recall without the candidate-count blowup their deterministic approach hits.
 ```
 
 ## Prompt 4B — Character n-gram retrieval channel (peer review; only if recall is still < 0.95 after Prompt 4)
@@ -179,10 +228,22 @@ top 15 feature importances.
 Also test the one-to-one assumption (docs/IDEAS.md B.8): score the best decoder with and without
 decide.one_to_one on the same OOF scores and report both (keep hard one-to-one only if it wins). Keep a change only if f05_all improves and transfer doesn't drop by more
 than 0.002; otherwise say which part to revert.
+
+Two concrete feature gaps found against docs/EDA_TEAMMATE.md §5/§7 (checked, not yet in features.py):
+1. Near-miss number flag — current features have numeric-token Jaccard (f_py col 2) and first-number-
+   equal (col 3), but no "numbers present on both sides, close but not equal" flag. This is the
+   dominant distractor pattern in their hard_negatives sample ("511 Yacht Drive" vs "513 Yacht Drive",
+   "Sn 2101" vs "Sn 2108") — small numeric edit distance, not exact match, not totally different.
+2. Address-missing features are 0, not NaN, when one side has no address (fuzz.ratio("", x) == 0).
+   f_addr_empty_{a,b} flags exist so the model can partly compensate, but the raw similarity columns
+   still read as "totally different" rather than "no data" — test whether making them NaN (LightGBM
+   handles NaN natively) changes anything before assuming the existing flag already covers it.
+Add both as E04b if time allows; report whether either moves f05_all.
 ```
 
 ## Prompt 6 — Stage 2 (triangle support) dev evaluation
 ```
+Prerequisite: Prompt 3 must be merged first (src/context.py is a stub on feat/pipeline until then).
 Run the stage-2 dev evaluation:
 ER_CACHE_TAG=v2 ER_JOBS=4 ER_LGB_JOBS=12 python -m src.run_pipeline --data ../../dataset --eval-only --exp-id E05 --change "stage2 context+competition+triangle"
 Compare with E04. Report the breakdown, decoder (threshold vs ef05, with params), transfer, and the
@@ -221,6 +282,17 @@ Implement normalization v2 (TDD, docstrings, no external data):
 - Any top fixes from docs/ERRORS.md that belong in normalization.
 Bump ER_CACHE_TAG to v3 (re-normalization needed, ~10 min). Rerun the dev evaluation (best config) as
 E06 and compare with the previous best. Commit.
+
+Resolved by docs/EDA_TEAMMATE.md §9 (their own normalization-collision study, 35k-sample SAMPLE
+evidence, not a disagreement to litigate further): conservative normalization (NFKC + casefold +
+punctuation/whitespace only) for blocking IDENTITY KEYS, abbreviation-expansion and token-sorting for
+FEATURES only — their collision groups grow raw 226 → conservative 389 → abbrev-expanded 429 → token-
+sorted 436. Our blocking.py currently uses abbreviation-normalized name_core/legal-split tokens directly
+as key families (n, nb, nm, np, nc, n2), which is the opposite of their recommendation. Their IDF
+weighting mitigation is a different fix for the same problem, not verified at our recall level — this
+v2 pass is also the moment to run the one cheap check: drop the abbreviation-normalized families from
+the blocking union (keep them as scoring features only) and compare recall/cands-per-entity against the
+Prompt 4 best. Report both configs; keep whichever wins on recall at bounded cands/entity.
 ```
 
 ## Prompt 9 — Full run on SageMaker → submission #2
