@@ -30,11 +30,17 @@ def stratified_s1(s1n, n_matches, frac, seed=None):
     return np.sort(rids)
 
 
-def training_rows(block_rank, y, keep_rank=None, easy_rate=None, seed=None):
+def training_rows(block_rank, y, keep_rank=None, easy_rate=None, seed=None, hard_fp=None,
+                  hard_fp_weight=4.0):
     """Rows to fit on and their sample weights (0 for rows left out).
 
     Keeps all positives and all negatives with block_rank < keep_rank; other negatives are kept
     with probability easy_rate and weighted 1/easy_rate.
+
+    `hard_fp` (Exp HN1, docs/NEXT_STEPS.md item 12): optional boolean array of confident OOF false
+    positives from a prior model (`p >= t_match` but `y == 0`) mined via
+    `notebooks/02_errors.ipynb`'s false-positive selection. Marked rows are always kept and
+    upweighted to `hard_fp_weight`, on top of (not replacing) the existing hard/easy split.
     """
     keep_rank = config.TRAIN_KEEP_RANK if keep_rank is None else keep_rank
     easy_rate = config.TRAIN_EASY_RATE if easy_rate is None else easy_rate
@@ -44,7 +50,12 @@ def training_rows(block_rank, y, keep_rank=None, easy_rate=None, seed=None):
         return np.ones(len(y), bool), np.ones(len(y), np.float32)
     hard = (y == 1) | (block_rank < keep_rank)
     easy = ~hard & (np.random.default_rng(seed).random(len(y)) < easy_rate)
-    w = np.where(easy, np.float32(1.0 / easy_rate), np.float32(1.0)).astype(np.float32)
+    easy_w = np.float32(1.0 / easy_rate) if easy_rate > 0 else np.float32(1.0)
+    w = np.where(easy, easy_w, np.float32(1.0)).astype(np.float32)
     mask = hard | easy
+    if hard_fp is not None:
+        hard_fp = np.asarray(hard_fp, bool)
+        w[hard_fp] = np.float32(hard_fp_weight)
+        mask = mask | hard_fp
     w[~mask] = 0.0
     return mask, w

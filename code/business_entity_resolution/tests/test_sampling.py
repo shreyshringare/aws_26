@@ -36,3 +36,23 @@ def test_training_rows_keeps_hard_rows_and_reweights_easy_negatives():
     assert abs(w.sum() - n) / n < 0.03  # weights keep the negative mass unbiased
     m1, w1 = training_rows(rank, y, easy_rate=1.0)
     assert m1.all() and (w1 == 1).all()
+
+
+def test_training_rows_includes_and_upweights_mined_hard_negatives():
+    """Exp HN1 (docs/NEXT_STEPS.md item 12): a confident OOF false positive fed back in as a hard
+    negative must be kept (even if it's not otherwise hard) and upweighted, without disturbing
+    rows the existing hard/easy split already decides."""
+    block_rank = np.array([20, 20, 0, 20])
+    y = np.array([0, 0, 1, 0])
+    hard_fp = np.array([True, False, False, False])
+    mask, w = training_rows(block_rank, y, keep_rank=10, easy_rate=0.0, hard_fp=hard_fp, hard_fp_weight=4.0)
+    assert mask.tolist() == [True, False, True, False]
+    assert w[0] == 4.0
+    assert w[2] == 1.0
+
+
+def test_training_rows_without_hard_fp_matches_prior_behavior():
+    block_rank = np.array([20, 0])
+    y = np.array([0, 1])
+    mask, w = training_rows(block_rank, y, keep_rank=10, easy_rate=0.0)
+    assert mask.tolist() == [False, True]
