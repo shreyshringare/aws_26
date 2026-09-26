@@ -70,6 +70,7 @@ def triangle_features(df, pooln, topm, pmin):
 
 
 CLUSTER_COLS = ["f2_comp_size", "f2_comp_n_sources", "f2_comp_mean_p", "f2_comp_max_other_p"]
+CLUSTER_ID_COL = "_comp_id"  # not "f2_"-prefixed on purpose: an arbitrary id must never be a model feature
 
 
 def cluster_features(df, pooln, sim_threshold=0.8):
@@ -80,12 +81,14 @@ def cluster_features(df, pooln, sim_threshold=0.8):
     same threshold `triangle_features`'s "sup" indicator uses) -- connected components of that
     graph give each candidate: cluster size, how many distinct sources the cluster spans, the
     cluster's mean p1, and the best OTHER member's p1 (0 for a singleton cluster). Built from
-    `p1` only (OOF on train), never in-fold, same discipline as `triangle_features`.
+    `p1` only (OOF on train), never in-fold, same discipline as `triangle_features`. Also exposes
+    the raw cluster id as `_comp_id` (Exp J2 plumbing, `decide.select_expected_f05`'s `comp_col`)
+    -- deliberately not "f2_"-prefixed so `model.feature_cols` never treats it as a model input.
     """
     d = df[["s1_rid", "pool_rid", "p1"]].reset_index(drop=True)
     n = len(d)
     if n == 0:
-        return df.assign(**{c: np.float32(0) for c in CLUSTER_COLS})
+        return df.assign(**{c: np.float32(0) for c in CLUSTER_COLS}, **{CLUSTER_ID_COL: np.int64(0)})
     d["_i"] = np.arange(n)
     is_s3 = pooln["is_s3"].to_numpy()
     m = d.merge(d, on="s1_rid", suffixes=("_a", "_b"))
@@ -118,7 +121,8 @@ def cluster_features(df, pooln, sim_threshold=0.8):
     f = first.reindex(d["_comp"]).to_numpy()
     s = second.reindex(d["_comp"]).fillna(0).to_numpy()
     d["f2_comp_max_other_p"] = np.where(is_top.to_numpy(), s, f).astype(np.float32)
-    return pd.concat([df.reset_index(drop=True), d[CLUSTER_COLS]], axis=1)
+    d[CLUSTER_ID_COL] = d["_comp"].astype(np.int64)
+    return pd.concat([df.reset_index(drop=True), d[CLUSTER_COLS + [CLUSTER_ID_COL]]], axis=1)
 
 
 def add_stage2_features(df, pooln, topm=None, pmin=None):

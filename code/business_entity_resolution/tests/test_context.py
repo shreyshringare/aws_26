@@ -46,3 +46,8 @@ def test_cluster_features_cross_source_component():
     assert r.loc[(0, 2), "f2_comp_n_sources"] == 1
     assert r.loc[(0, 2), "f2_comp_max_other_p"] == 0.0
     assert r.loc[(1, 2), "f2_comp_size"] == 1
+    # _comp_id (Exp J2 plumbing, docs/RESEARCH_JOINT_S2S3.md Option B): exposed as a raw grouping
+    # id -- not an "f2_"-prefixed feature, so model.feature_cols() never picks it up as model input.
+    assert r.loc[(0, 0), "_comp_id"] == r.loc[(0, 1), "_comp_id"]
+    assert r.loc[(0, 2), "_comp_id"] != r.loc[(0, 0), "_comp_id"]
+    assert r.loc[(1, 2), "_comp_id"] != r.loc[(0, 2), "_comp_id"]
