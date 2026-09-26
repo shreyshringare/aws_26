@@ -145,6 +145,39 @@ def test_tune_without_comp_col_keeps_grid_size_unchanged():
     assert all("joint" not in dec for _, dec in results)
 
 
+def test_tune_segments_calls_tune_once_per_segment(monkeypatch):
+    """docs/NEXT_STEPS.md item 15: segment-specific thresholds tune independently per segment
+    value (never per country -- segment_col here is a stand-in for is_s3/addr-empty/script)."""
+    d = pd.DataFrame({"s1_rid": [0, 1], "pool_rid": [1, 2], "p": np.float32([0.9, 0.9]), "seg": ["a", "b"]})
+    calls = []
+
+    def spy(df, calibrator, extra, scorer, comp_col=None):
+        calls.append(sorted(df["pool_rid"]))
+        return {"tag": "dec"}, []
+
+    import src.decide as decide_mod
+    monkeypatch.setattr(decide_mod, "tune", spy)
+    out = decide.tune_segments(d, None, 0.0, scorer=len, segment_col="seg")
+    assert sorted(calls) == [[1], [2]]
+    assert set(out) == {"a", "b"}
+
+
+def test_apply_segmented_decoder_routes_each_segment_to_its_own_decoder(monkeypatch):
+    d = pd.DataFrame({"s1_rid": [0, 1], "pool_rid": [1, 2], "p": np.float32([0.9, 0.9]), "seg": ["a", "b"]})
+    calls = []
+
+    def spy(df, dec, calibrator, extra, comp_col=None):
+        calls.append((dec["tag"], sorted(df["pool_rid"])))
+        return df[["s1_rid", "pool_rid", "p"]]
+
+    import src.decide as decide_mod
+    monkeypatch.setattr(decide_mod, "apply_decoder", spy)
+    decoders = {"a": {"tag": "dec_a"}, "b": {"tag": "dec_b"}}
+    out = decide.apply_segmented_decoder(d, decoders, "seg", None, 0.0)
+    assert sorted(calls) == [("dec_a", [1]), ("dec_b", [2])]
+    assert sorted(out["pool_rid"]) == [1, 2]
+
+
 def test_tune_selects_one_to_one_false_when_it_scores_higher():
     """With a scorer that simply rewards more selected rows, one_to_one=False (which can only
     produce a superset of one_to_one=True's rows for the same thresholds) must win -- proving

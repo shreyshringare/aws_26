@@ -167,3 +167,30 @@ def tune(df, calibrator, extra, scorer, comp_col=None):
                 print(f"  {dec} -> {s:.5f}", flush=True)
     best = max(results, key=lambda r: r[0])
     return dict(best[1], oof_f05=round(best[0], 5)), results
+
+
+def tune_segments(df, calibrator, extra, scorer, segment_col, comp_col=None):
+    """Tune one decoder per distinct value of `segment_col` (docs/NEXT_STEPS.md item 15).
+
+    `segment_col` must be a country-agnostic column already in `df` (e.g. `is_s3`,
+    `f_addr_empty_a`/`_b`, `f_script_a`/`_b`) -- never country, per CLAUDE.md's
+    country-is-a-blocking-key-only rule. `scorer` is shared across segments (it should itself
+    already restrict scoring to the segment's rows, e.g. via a mask, the same convention
+    `run_pipeline.Scorer` already uses). Returns {segment value: (dec, grid results)}.
+
+    Caveat: global one-to-one competition (`decide.one_to_one`) is applied independently within
+    each segment's own `tune`/`apply_decoder` call, not across segments -- correct when
+    `segment_col` is a property of the pool record itself (e.g. `is_s3`, which source a candidate
+    is from), since one_to_one's competition is over `pool_rid` and a pool record's source never
+    changes across S1 groups. It is NOT correct for an S1-side segment (e.g. an S1-level
+    address-empty flag) where the same pool record could appear in two different S1 groups whose
+    segment differs -- don't use an S1-side column here without checking that case specifically.
+    """
+    return {seg: tune(g, calibrator, extra, scorer, comp_col=comp_col) for seg, g in df.groupby(segment_col)}
+
+
+def apply_segmented_decoder(df, decoders, segment_col, calibrator, extra, comp_col=None):
+    """Apply each segment's own decoder (from `tune_segments`) to its rows; concatenate results."""
+    parts = [apply_decoder(g, decoders[seg], calibrator, extra, comp_col=comp_col)
+             for seg, g in df.groupby(segment_col)]
+    return pd.concat(parts, ignore_index=True) if parts else df.iloc[0:0][["s1_rid", "pool_rid", "p"]]
