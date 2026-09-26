@@ -67,6 +67,22 @@ def select_threshold(df, t_match, t_empty):
     return df[(df["p"] >= t_match) & (best >= t_empty)]
 
 
+def select_threshold_vocab_aware(df, freq_col, t_match, t_empty, low_freq_cutoff, empty_boost):
+    """Threshold decoder with a vocabulary-coverage-aware empty gate (docs/NEXT_STEPS.md item 14).
+
+    Same as `select_threshold`, except the empty-gate threshold is raised by `empty_boost` for S1
+    groups whose best-available `freq_col` value (a vocabulary-coverage proxy -- e.g. a
+    candidate's name frequency in the pool, see `features.add_frequency_columns`) is below
+    `low_freq_cutoff`. A group with no well-covered candidate needs more confidence before the
+    decoder trusts a non-empty output -- a proxy mitigation for the France OOV risk. Never reads
+    country; `freq_col` must itself be a country-agnostic column already in `df`.
+    """
+    best_p = df.groupby("s1_rid")["p"].transform("max")
+    best_freq = df.groupby("s1_rid")[freq_col].transform("max")
+    eff_t_empty = np.where(best_freq < low_freq_cutoff, t_empty + empty_boost, t_empty)
+    return df[(df["p"] >= t_match) & (best_p.to_numpy() >= eff_t_empty)]
+
+
 def select_expected_f05(df, extra, p_min=None, kmax=None, n_draws=None, seed=None, batch=50_000,
                         comp_col=None):
     """Per S1 group choose top-k (k >= 0) maximising Monte-Carlo expected F0.5.

@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 
 from src import config, decide
-from src.decide import apply_decoder, correlated_hits, one_to_one, select_expected_f05, select_threshold, tune
+from src.decide import (apply_decoder, correlated_hits, one_to_one, select_expected_f05, select_threshold,
+                        select_threshold_vocab_aware, tune)
 
 
 def _df(rows):
@@ -143,6 +144,29 @@ def test_tune_without_comp_col_keeps_grid_size_unchanged():
     best, results = tune(d, None, 0.0, scorer=len)
     assert len(results) == 2 * n_base
     assert all("joint" not in dec for _, dec in results)
+
+
+def test_select_threshold_vocab_aware_raises_gate_for_low_frequency_groups():
+    """docs/NEXT_STEPS.md item 14 (France hardening): a group whose best candidate has low
+    vocabulary-coverage (e.g. a rare/unseen name -- proxy for the France OOV risk) needs a higher
+    bar before the decoder trusts a non-empty output; a well-covered group is unaffected."""
+    d = pd.DataFrame({
+        "s1_rid": [0, 0, 1, 1], "pool_rid": [1, 2, 3, 4],
+        "p": np.float32([0.6, 0.4, 0.6, 0.4]), "freq": np.float32([0.0, 0.0, 5.0, 5.0]),
+    })
+    sel = select_threshold_vocab_aware(d, "freq", t_match=0.3, t_empty=0.5,
+                                       low_freq_cutoff=1.0, empty_boost=0.2)
+    assert 0 not in sel["s1_rid"].to_numpy()  # rare group gated (0.6 < 0.5 + 0.2)
+    assert set(sel[sel["s1_rid"] == 1]["pool_rid"]) == {3, 4}  # common group unaffected
+
+
+def test_select_threshold_vocab_aware_matches_plain_threshold_at_zero_boost():
+    d = pd.DataFrame({"s1_rid": [0, 0], "pool_rid": [1, 2], "p": np.float32([0.6, 0.4]),
+                      "freq": np.float32([0.0, 0.0])})
+    plain = select_threshold(d, t_match=0.3, t_empty=0.5)
+    vocab = select_threshold_vocab_aware(d, "freq", t_match=0.3, t_empty=0.5,
+                                         low_freq_cutoff=1.0, empty_boost=0.0)
+    assert plain.equals(vocab)
 
 
 def test_tune_segments_calls_tune_once_per_segment(monkeypatch):
