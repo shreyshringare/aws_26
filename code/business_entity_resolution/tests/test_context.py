@@ -51,3 +51,24 @@ def test_cluster_features_cross_source_component():
     assert r.loc[(0, 0), "_comp_id"] == r.loc[(0, 1), "_comp_id"]
     assert r.loc[(0, 2), "_comp_id"] != r.loc[(0, 0), "_comp_id"]
     assert r.loc[(1, 2), "_comp_id"] != r.loc[(0, 2), "_comp_id"]
+
+
+def test_cluster_features_only_considers_top_m_candidates_per_group():
+    """Regression guard: cluster_features must cap pair generation to a group's top-m candidates
+    by p1 (like triangle_features already does), never a full O(group_size^2) self-join -- at full
+    test scale (~1.7M S1 entities x ~40 candidates each) an uncapped self-join is a real
+    memory/runtime blowup (sum of group_size^2 across all groups, not group_size*topm).
+    Two genuinely near-duplicate cross-source candidates ranked OUTSIDE the top-m (by p1) must NOT
+    be clustered together, even though an uncapped comparison would cluster them."""
+    ents = [f"S2-{i}" if i % 2 == 0 else f"S3-{i}" for i in range(8)] + ["S2-x", "S3-x"]
+    names = [f"Unrelated {i}" for i in range(8)] + ["Blue Ocean Ltd", "Blue Ocean"]
+    addrs = [f"{i} Nowhere St" for i in range(8)] + ["5 Sea Rd, Goa", "5 Sea Road, Goa"]
+    pool = normalize_frame(pd.DataFrame({"entity_id": ents, "business_name": names,
+                                         "business_address": addrs, "country": ["India"] * len(ents)}))
+    # top-5 by p1 = indices 0-4; the near-duplicate pair (indices 8, 9) is ranked last (8th, 9th)
+    p1 = np.float32([0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.2, 0.15])
+    feats = pd.DataFrame({"s1_rid": [0] * 10, "pool_rid": list(range(10)), "p1": p1})
+    out = cluster_features(feats, pool)
+    r = out.set_index("pool_rid")
+    assert r.loc[8, "f2_comp_size"] == 1
+    assert r.loc[9, "f2_comp_size"] == 1

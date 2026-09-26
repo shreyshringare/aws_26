@@ -73,25 +73,32 @@ CLUSTER_COLS = ["f2_comp_size", "f2_comp_n_sources", "f2_comp_mean_p", "f2_comp_
 CLUSTER_ID_COL = "_comp_id"  # not "f2_"-prefixed on purpose: an arbitrary id must never be a model feature
 
 
-def cluster_features(df, pooln, sim_threshold=0.8):
+def cluster_features(df, pooln, sim_threshold=0.8, topm=None):
     """Cross-source (S2/S3) cluster features (differentiator #1a extension, docs/IDEAS.md B.6).
 
-    Within each S1 group, two candidates are joined into the same cluster if they come from
-    different pool sources (S2/S3) and their name+address similarity exceeds `sim_threshold` (the
-    same threshold `triangle_features`'s "sup" indicator uses) -- connected components of that
-    graph give each candidate: cluster size, how many distinct sources the cluster spans, the
-    cluster's mean p1, and the best OTHER member's p1 (0 for a singleton cluster). Built from
-    `p1` only (OOF on train), never in-fold, same discipline as `triangle_features`. Also exposes
-    the raw cluster id as `_comp_id` (Exp J2 plumbing, `decide.select_expected_f05`'s `comp_col`)
-    -- deliberately not "f2_"-prefixed so `model.feature_cols` never treats it as a model input.
+    Within each S1 group, two candidates are joined into the same cluster if they're both among
+    the group's top-`topm` candidates by `p1` (same cap `triangle_features` uses, and for the same
+    reason: a full O(group_size^2) self-join across every S1 group would blow up at full test
+    scale -- ~1.7M S1 entities x ~40 candidates each means sum(group_size^2), not
+    sum(group_size*topm)), come from different pool sources (S2/S3), and their name+address
+    similarity exceeds `sim_threshold` (the same threshold `triangle_features`'s "sup" indicator
+    uses). Connected components of that graph give each candidate: cluster size, how many distinct
+    sources the cluster spans, the cluster's mean p1, and the best OTHER member's p1 (0 for a
+    singleton cluster, including every candidate outside the top-`topm` cut). Built from `p1` only
+    (OOF on train), never in-fold, same discipline as `triangle_features`. Also exposes the raw
+    cluster id as `_comp_id` (Exp J2 plumbing, `decide.select_expected_f05`'s `comp_col`) --
+    deliberately not "f2_"-prefixed so `model.feature_cols` never treats it as a model input.
     """
+    topm = topm or config.TRIANGLE_TOPM
     d = df[["s1_rid", "pool_rid", "p1"]].reset_index(drop=True)
     n = len(d)
     if n == 0:
         return df.assign(**{c: np.float32(0) for c in CLUSTER_COLS}, **{CLUSTER_ID_COL: np.int64(0)})
     d["_i"] = np.arange(n)
     is_s3 = pooln["is_s3"].to_numpy()
-    m = d.merge(d, on="s1_rid", suffixes=("_a", "_b"))
+    top = d.sort_values(["s1_rid", "p1"], ascending=[True, False])
+    top = top[top.groupby("s1_rid").cumcount() < topm]
+    m = top.merge(top, on="s1_rid", suffixes=("_a", "_b"))
     m = m[m["_i_a"] < m["_i_b"]]
     m = m[is_s3[m["pool_rid_a"].to_numpy()] != is_s3[m["pool_rid_b"].to_numpy()]]
     if len(m):
@@ -131,4 +138,4 @@ def add_stage2_features(df, pooln, topm=None, pmin=None):
     pmin = config.TRIANGLE_PMIN if pmin is None else pmin
     df = group_context(df.reset_index(drop=True))
     df = triangle_features(df, pooln, topm, pmin)
-    return cluster_features(df, pooln)
+    return cluster_features(df, pooln, topm=topm)
