@@ -1,5 +1,5 @@
 """Tests for noise-channel features."""
-from src.noise import NOISE_FEATS, ROW_COLS, acronym, digit_deletion, fit_generic_vocab, noise_row
+from src.noise import NOISE_FEATS, ROW_COLS, acronym, digit_deletion, fit_generic_vocab, noise_row, num_near_miss
 
 
 def _row(**kw):
@@ -64,3 +64,22 @@ def test_num_conflict():
     assert conflict("719", "719") == 0
     assert conflict("719", "19") == 0
     assert conflict("719", "") == 0
+
+
+def test_num_near_miss():
+    """docs/ERRORS.md class 3 (number_conflict FP/FN inconsistency): distinct from f_nz_num_conflict
+    (exact equal/not-equal, no distance notion) -- this measures HOW close two numbers are, so a
+    single-digit typo ('511' vs '513') can be told apart from a genuinely different number."""
+    assert abs(num_near_miss("511", "513") - 1 / 3) < 1e-9  # 1 digit off out of 3 -> 1/3
+    assert num_near_miss("719", "719") == 0.0
+    assert num_near_miss("719", "") == -1.0
+    assert num_near_miss("", "719") == -1.0
+    assert num_near_miss("719", "54") == 1.0
+
+
+def test_num_near_miss_wired_into_noise_row():
+    def near(x, y):
+        return dict(zip(NOISE_FEATS, noise_row(_row(nums=x), _row(nums=y), set())))["f_nz_num_near_miss"]
+    assert abs(near("511", "513") - 1 / 3) < 1e-9
+    assert near("719", "719") == 0.0
+    assert near("719", "") == -1.0

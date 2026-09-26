@@ -17,7 +17,7 @@ CORE, LEGAL, LEGAL_FIRST, NUMS, ADDR_ALPHA, NAME_NORM, NAME_RAW, ADDR_NORM, ADDR
 NOISE_FEATS = [
     "f_nz_num_digit_del", "f_nz_num_missing_one", "f_nz_name_generic_only", "f_nz_name_core_equal",
     "f_nz_legal_moved", "f_nz_edit1_tokens", "f_nz_addr_only", "f_nz_accent_only", "f_nz_addr_norm_only",
-    "f_nz_num_conflict", "f_acronym",
+    "f_nz_num_conflict", "f_acronym", "f_nz_num_near_miss",
 ]
 
 
@@ -67,6 +67,22 @@ def _edit1(ca, cb):
                and any(DamerauLevenshtein.distance(t, u, score_cutoff=1) <= 1 for u in only_b))
 
 
+def num_near_miss(a, b):
+    """Normalized edit distance between two number-token strings (docs/ERRORS.md class 3).
+
+    0 = exact match, up to 1 = very different, -1 = either side has no number at all (no evidence
+    either way). Distinct from `f_nz_num_conflict` (exact equal/not-equal, no distance notion):
+    this tells a single-digit typo ('511' vs '513') apart from a genuinely different number
+    ('719' vs '54'), which the FP/FN inconsistency in docs/ERRORS.md class 3 shows the model
+    currently has no signal to distinguish.
+    """
+    if not a or not b:
+        return -1.0
+    if a == b:
+        return 0.0
+    return DamerauLevenshtein.distance(a, b) / max(len(a), len(b))
+
+
 def noise_row(a, b, generic):
     """Noise-channel feature values for one pair of ROW_COLS tuples (order = NOISE_FEATS)."""
     ta, tb = a[CORE].split(), b[CORE].split()
@@ -86,4 +102,5 @@ def noise_row(a, b, generic):
         int(bool(a[ADDR_NORM]) and a[ADDR_NORM] == b[ADDR_NORM] and a[ADDR_RAW].lower() != b[ADDR_RAW].lower()),
         int(bool(na) and bool(nb) and na[0] != nb[0] and not ddel),
         acronym(ta, tb),
+        num_near_miss(na[0] if na else "", nb[0] if nb else ""),
     ]
