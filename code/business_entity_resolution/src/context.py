@@ -8,7 +8,9 @@ On train these are built from OUT-OF-FOLD p1 only.
 """
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from rapidfuzz import fuzz, process
+from scipy.sparse.csgraph import connected_components
 
 from . import config
 
@@ -67,9 +69,62 @@ def triangle_features(df, pooln, topm, pmin):
     return out
 
 
+CLUSTER_COLS = ["f2_comp_size", "f2_comp_n_sources", "f2_comp_mean_p", "f2_comp_max_other_p"]
+
+
+def cluster_features(df, pooln, sim_threshold=0.8):
+    """Cross-source (S2/S3) cluster features (differentiator #1a extension, docs/IDEAS.md B.6).
+
+    Within each S1 group, two candidates are joined into the same cluster if they come from
+    different pool sources (S2/S3) and their name+address similarity exceeds `sim_threshold` (the
+    same threshold `triangle_features`'s "sup" indicator uses) -- connected components of that
+    graph give each candidate: cluster size, how many distinct sources the cluster spans, the
+    cluster's mean p1, and the best OTHER member's p1 (0 for a singleton cluster). Built from
+    `p1` only (OOF on train), never in-fold, same discipline as `triangle_features`.
+    """
+    d = df[["s1_rid", "pool_rid", "p1"]].reset_index(drop=True)
+    n = len(d)
+    if n == 0:
+        return df.assign(**{c: np.float32(0) for c in CLUSTER_COLS})
+    d["_i"] = np.arange(n)
+    is_s3 = pooln["is_s3"].to_numpy()
+    m = d.merge(d, on="s1_rid", suffixes=("_a", "_b"))
+    m = m[m["_i_a"] < m["_i_b"]]
+    m = m[is_s3[m["pool_rid_a"].to_numpy()] != is_s3[m["pool_rid_b"].to_numpy()]]
+    if len(m):
+        sim = (process.cpdist(pooln["name_norm"].take(m["pool_rid_a"]).tolist(),
+                              pooln["name_norm"].take(m["pool_rid_b"]).tolist(),
+                              scorer=fuzz.token_set_ratio, workers=config.N_JOBS, dtype=np.float32)
+               + process.cpdist(pooln["addr_norm"].take(m["pool_rid_a"]).tolist(),
+                                pooln["addr_norm"].take(m["pool_rid_b"]).tolist(),
+                                scorer=fuzz.token_set_ratio, workers=config.N_JOBS, dtype=np.float32)) / 200.0
+        m = m[sim > sim_threshold]
+    if len(m):
+        graph = sp.coo_matrix((np.ones(len(m)), (m["_i_a"], m["_i_b"])), shape=(n, n))
+        _, labels = connected_components(graph, directed=False)
+    else:
+        labels = np.arange(n)
+    d["_comp"], d["_is_s3"] = labels, is_s3[d["pool_rid"].to_numpy()]
+    g = d.groupby("_comp")
+    d["f2_comp_size"] = g["p1"].transform("size").astype(np.float32)
+    d["f2_comp_n_sources"] = g["_is_s3"].transform("nunique").astype(np.float32)
+    d["f2_comp_mean_p"] = g["p1"].transform("mean").astype(np.float32)
+    o = d[["_comp", "p1"]].sort_values(["_comp", "p1"], ascending=[True, False])
+    r = o.groupby("_comp").cumcount()
+    first = o.loc[r == 0].set_index("_comp")["p1"]
+    second = o.loc[r == 1].set_index("_comp")["p1"]
+    is_top = pd.Series(False, index=d.index)
+    is_top.loc[o.index[(r == 0).to_numpy()]] = True
+    f = first.reindex(d["_comp"]).to_numpy()
+    s = second.reindex(d["_comp"]).fillna(0).to_numpy()
+    d["f2_comp_max_other_p"] = np.where(is_top.to_numpy(), s, f).astype(np.float32)
+    return pd.concat([df.reset_index(drop=True), d[CLUSTER_COLS]], axis=1)
+
+
 def add_stage2_features(df, pooln, topm=None, pmin=None):
     """All stage-2 features; preserves row order of `df` (which must contain p1)."""
     topm = topm or config.TRIANGLE_TOPM
     pmin = config.TRIANGLE_PMIN if pmin is None else pmin
     df = group_context(df.reset_index(drop=True))
-    return triangle_features(df, pooln, topm, pmin)
+    df = triangle_features(df, pooln, topm, pmin)
+    return cluster_features(df, pooln)
