@@ -266,6 +266,26 @@ matched slice, and re-check transfer — hard negatives mined from US/India OOF 
 overfit to US/India-specific false-positive patterns that don't generalize to France, so this is exactly
 the kind of change the transfer-robustness rule exists to catch.
 
+## 13a. NEW (organizer email, 36h mark): candidate-set size is now its own ranking axis
+
+Amazon ML Challenge 2026 organizer update (received during the challenge, not in the original
+problem statement CLAUDE.md was written from): `candidate_pairs.tsv` and the blocking code that
+produces it are reviewed for final ranking **independent of the public/private leaderboard F0.5
+score**. "The approach that generates a smaller candidate set per Source 1 entity will be ranked
+higher in the final evaluation." This is a real change to the optimization target for blocking:
+previously cands/entity was only a soft bound ("tens, not hundreds"); it's now explicitly scored.
+
+**Current state**: E06 blocking = 0.9523 recall at 42.6 cands/entity (`BLOCK_CHANNELS`: name top-20,
+addr top-20, all top-30, unioned). Never been tuned for *minimum* candidate count at a given
+recall floor -- only bounded from above.
+
+**Open question, needs a human call, not a blind retune**: how much recall are we willing to trade
+for a smaller candidate set, given this is now separately rewarded but the exact scoring weight
+Amazon puts on it vs. the F0.5 score is unknown? Candidates for a future prompt once this is
+decided: sweep per-channel top-k downward (e.g. 20/20/30 -> 12/12/18) and report the
+recall-vs-cands/entity curve so the team can pick a point on that curve deliberately, rather than
+just re-running the existing recall-maximizing tune.
+
 ## 13. Blocking recall → 0.97 on full data (still the single largest measured lever)
 
 **Status:** B05/E06 sits at 0.9523 recall (dev sample, `FRAC` per `config.DEV_FRAC`/`TRAIN_FRAC`), short
