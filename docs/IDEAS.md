@@ -123,7 +123,7 @@ One experiment per idea, logged in `experiments/log.csv`. Keep an idea only if d
 | Global one-to-one assignment | ✅ | exact in train | — |
 | Expected-F0.5 subset selection (Monte Carlo, includes "none") | ✅ | differentiator #1b | beats threshold on OOF |
 | Threshold + empty-gate baseline | ✅ | fallback | — |
-| Joint S2/S3 cluster decision (pick consistent clusters, not just top-k) | 🧪 | uses S2↔S3 similarity at decision time | stage-2 triangle features aren't enough |
+| Joint S2/S3 cluster decision (pick consistent clusters, not just top-k) | ⏭ researched, `docs/RESEARCH_JOINT_S2S3.md` — Exp J1 (`docs/PROMPTS.md` Prompt 8C) then J2 (Prompt 8D) queued | uses S2↔S3 similarity at decision time | stage-2 triangle features aren't enough |
 | Segment thresholds by country-agnostic segments (S2 vs S3, missing address, native script); **not** per country (France untunable) | 🧪 | noise differs by segment | beats the single decoder on OOF |
 | **Error-analysis taxonomy** after each dev run (~200 errors → blocking miss / abbreviation / address norm / model FP / threshold / other) | ✅ | done for E05, see `docs/ERRORS.md` — blocking_miss (60% of FN sample) and threshold (18%) dominate, `other` bucket (47% of FP sample) revealed the classifier's taxonomy itself is missing a trade-name-swap class | rerun after each significant dev-config change |
 | Bare legal-suffix-drop as a sub-case of Prompt 8's alias work (not just `dba`-keyword aliases) | ⏭ | `docs/ERRORS.md` class 4: several FN examples are pure legal-suffix drops ("Jackson Keystone Btc Corp" vs "...Btc", no `dba`/`aka` keyword involved) that Prompt 8's alias regex as currently speced wouldn't catch | dev ↑ on legal-suffix-only mismatches |

@@ -127,11 +127,14 @@ Sanity check: pred {a,b,x}, true {a,b} -> 0.714.
 ## Current status (update as you go)
 * [x] EDA answers: singleton rate = 5.6%, one-to-one holds = yes (0 of 7.6M pool ids shared), cross-country matches = 0
 * [x] Design spec + implementation plan written (docs/superpowers/)
-* [ ] E00 all-empty submission: public LB = ? (no upload spent yet)
-* [ ] Fuzzy baseline: local = ?, public = ?
-* [x] LightGBM stage 1 (dev OOF f05_all = 0.94642, exp E03) / [ ] stage 2 (blocked: `models2` comes back
-      empty on the last full run so `m2` is `None` and scoring falls back to stage-1-only — root cause
-      not yet traced, see HANDOFF.md blockers)
-* [x] Decision layer tuned: threshold decoder, t_match=0.7, t_empty=0.3 (exp E03); US↔IN transfer still
-      not computed
+* [x] First real upload: exp E03, public LB = 0.942 (tag sub-d1-01). E00 all-empty baseline never uploaded separately.
+* [x] LightGBM stage 1 + stage 2 (dev OOF f05_all = 0.96817, exp E06 — normalization v2 + retrieval-evidence
+      features, current best; up from E05's 0.96519 stage-2-kept and E03's 0.94642 stage-1-only). Stage 2 is
+      real and measured on dev; not yet exercised in a full (non-eval-only) run — see HANDOFF.md.
+* [x] Decision layer tuned: ef05 decoder, tau=0.8, lam=0.0 (exp E06, cache/v3_decoder.json). US↔IN transfer
+      0.89623 / 0.94474 (E06, best yet).
+* [x] Post-E06 differentiator code landed (docs/RESEARCH_JOINT_S2S3.md, docs/PROMPTS.md Prompts 8C-8H):
+      joint S2/S3 cluster features + correlated decision-time decoder, hard-negative mining hook,
+      segment-specific decoding, France vocabulary-coverage empty gate. All TDD, unit-tested, not yet
+      measured at scale — pending the next full SageMaker run (local RAM too tight to retrain safely).
 * [ ] Packaging + README + methodology doc

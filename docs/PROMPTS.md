@@ -4,29 +4,40 @@ Run these in order. Each prompt is self-contained: paste it into a Claude Code s
 `D:\AWS_HACK\student_resource` (or the SageMaker checkout). Do one prompt per session or per shift.
 Before starting, check `HANDOFF.md` → "Current state" to see which step is next.
 
-State at the time of writing (25 Sep, updated through Prompt 4 done / Prompt 5 in progress):
+State at the time of writing (26 Sep, updated through Prompt 8 / exp E06 done, Prompts 8A-8H added):
 - **`docs/NEXT_STEPS.md` is the live priority tracker — read it first, this header is a snapshot.**
   It has a "Status update" note at the top of its ranked-order section showing exactly which items are
   done vs pending, plus its own Warnings/Leads sections. This PROMPTS.md header will drift; NEXT_STEPS
   is where completions get marked.
 - **Prompt 1 (MVP)**: done. Prompt 2 (upload): done — first real submission, tag `sub-d1-01`, exp E03,
-  public LB **0.942**, recorded in `experiments/log.csv` and `HANDOFF.md`.
-- **Prompt 3 (merge stage-2 branch)**: done — `worktree-agent-a0b1edbe6ec982855` merged clean (no
-  conflicts, 44/44 tests pass), worktree removed. `src/context.py` now has the real stage-2
-  implementation, no longer a stub. This unblocked Prompt 6 and `NO_STAGE2=False`.
-- **Prompt 4 (blocking experiments)**: done. B05 (EDA weights + `na` cross keys) is the kept config —
-  recall **0.9534** (up from B03's 0.9185), 42.6 cands/entity. `na` cross-key alone was worth +3.5pt
-  recall for <1 extra candidate/entity, the single biggest lever measured. B06 (wider name channel)
-  wasn't worth it, reverted. Still 1.7pt short of the 0.97 target but clears Prompt 4B's 0.95 skip
-  threshold, so the char n-gram channel isn't needed. A real bug got fixed along the way:
-  `cross_keys()` in `blocking.py` was unconditional, ignoring `config.CROSS_FAMS` — now gated correctly.
-- **Prompt 5 (stage-1 dev eval, exp E04)**: in progress as of this update — check
-  `experiments/log.csv` for an E04 row with `f05_all` filled before re-running it.
+  public LB **0.942**, recorded in `experiments/log.csv` and `HANDOFF.md`. No upload spent since —
+  E04/E05/E06's dev gains are not yet reflected on the leaderboard.
+- **Prompt 3 (merge stage-2 branch)**: done. **Prompt 4 (blocking)**: done, B05 kept, recall 0.9534.
+  **Prompt 5 (E04 stage-1 dev eval)**: done, 0.96274 all. **Prompt 6 (E05 stage-2)**: done and kept —
+  0.96519 all, beats E04 on every metric. **Prompt 7/7B (error taxonomy + peer-review features)**: done,
+  `docs/ERRORS.md` written. **Prompt 8 (normalization v2)**: done — **exp E06 is the current best**,
+  0.96817 all / 0.89623 US→India / 0.94474 India→US, improving singletons and both transfer directions
+  simultaneously (see `experiments/log.csv`).
+- **New since Prompt 8: `docs/RESEARCH_JOINT_S2S3.md`** researches the highest-ranked remaining
+  differentiator (joint S2↔S3 cluster consistency, `docs/IDEAS.md` B.6) and **Prompts 8A-8H** below turn
+  the full post-E06 priority list (`docs/NEXT_STEPS.md` items 11-16) into runnable prompts, in
+  recommended order: 8A (cheap decoder re-tune) → 8B (fix the stage-2-silently-disabled bug, prerequisite
+  for a real full run) → 8C/8D (joint S2↔S3, the top differentiator) → 8E (hard-negative mining) → 8F
+  (blocking recall full-data re-check) → 8G (France hardening) → 8H (segment thresholds). Do these before
+  Prompt 9's full run so the full run actually reflects the best model, not E06 alone.
+- **Known open blocker (do not skip):** the last full SageMaker run had `models2` come back empty even
+  with stage 2 intended on — test inference silently fell back to stage-1-only. This is a DIFFERENT
+  situation from the old, intentional `NO_STAGE2=True` MVP case; see Prompt 8B and
+  `docs/NEXT_STEPS.md` Warning 13. Fix this before Prompt 9's full run or the upload won't reflect E05/
+  E06's stage-2 gains at all.
+- **`output/` currently holds the empty E00 baseline, not a real model run** (verified: 0 non-empty rows
+  out of 1,732,544) — see `SOLUTION_DEEPDIVE.md` §12. Regenerate before trusting it for Prompt 9 or a
+  zip build.
 - Own-EDA (`docs/EDA.md` §G) and teammate-EDA (`docs/EDA_TEAMMATE.md`) findings have both been
-  cross-checked directly against the source, not just cited from the docs — see `docs/NEXT_STEPS.md`
-  items 9 and 10. Confirmed still-open gaps: alias splitting and French `etablissements`/`bis`/`ter`
-  (both target of Prompt 8, not yet run), near-miss number flag (distinct from the existing
-  `f_nz_num_conflict` — don't conflate them), NaN-vs-0 for missing-address features.
+  cross-checked directly against the source — see `docs/NEXT_STEPS.md` items 9 and 10, now resolved.
+  Alias splitting and French `etablissements`/`bis`/`ter` landed in E06. Still open: near-miss number
+  flag (distinct from `f_nz_num_conflict` — don't conflate), NaN-vs-0 for missing-address features (may
+  now be partially covered by E06's retrieval-evidence/ambiguity features — verify before re-doing).
 - Models + decoder saved locally on the SageMaker instance (`cache/m1_stage1.txt`,
   `cache/{tag}_decoder.json`) via notebook section 12. **Not yet in S3** — the notebook instance's IAM
   role has no S3 permissions (`aws s3 cp` → "Unable to locate credentials"); needs a policy attach +
@@ -42,17 +53,19 @@ State at the time of writing (25 Sep, updated through Prompt 4 done / Prompt 5 i
 
 ## ▶ Start here (visible progress path)
 1. **Prompt 0** (session start) → shows where things stand.
-2. **Prompt N0** (dashboard notebook) → build once; re-run it after every step to *see* progress (score chart, blocking recall, live run log, uploads).
-3. **Prompts 1A → 1D** → already effectively done (via `train.ipynb` on SageMaker instead of this CLI
-   path — validator PASS, output ready). Skip straight to **Prompt 2** unless you need to reproduce via
-   CLI, or Prompt 1C's QA report (`docs/QA_E03r.md`) hasn't been written yet — do that first if missing.
-4. **You upload** → **Prompt 2** records the score, and the dashboard shows it. First real upload of
-   the day (0/5 used) — tag should be `sub-d1-01`, not `sub-d1-02`.
-5. **Prompt 3 (merge the stage-2 branch) is now higher priority than before** — `src/context.py` on
-   `feat/pipeline` is a stub; nothing that depends on real stage 2 (Prompt 6, or flipping
-   `NO_STAGE2=False` in the notebook) works until this merge lands.
-6. Then Prompts 4 → 14, one per session, refreshing the dashboard after each. See `docs/NEXT_STEPS.md`
-   for the fuller ranked priority order once past Prompt 3.
+2. **Prompt N0** (dashboard notebook) → already built; re-run it after every step to *see* progress
+   (score chart, blocking recall, live run log, uploads).
+3. Prompts 1-8 are done (MVP through normalization v2, exp E06 = current best, 0.96817 dev OOF). Don't
+   re-run them; read `docs/NEXT_STEPS.md`'s status note if you need the history.
+4. **Next up: Prompts 8A → 8H, in order** — the post-E06 differentiator list
+   (`docs/NEXT_STEPS.md` items 11-16, researched in `docs/RESEARCH_JOINT_S2S3.md` for the top item).
+   Start with **8A** (cheap decoder re-tune) and **8B** (fix the stage-2-silently-disabled bug — a real
+   prerequisite, not optional) before the heavier **8C/8D** (joint S2↔S3 cluster consistency, the
+   highest-ranked new differentiator), then **8E-8H**.
+5. Only after 8A-8H (or as many as time allows, in that priority order): **Prompt 9** (full SageMaker run
+   → submission #2, with a real upload this time reflecting all the dev gains since E03) → **Prompt 10**
+   (France check) → **Prompt 11** (push to GitHub) → **Prompts 12-13** (Day 3 packaging + final
+   selection) → **Prompt 14** (end of shift, every shift).
 
 Where progress shows up: `notebooks/00_dashboard.ipynb` (charts), `experiments/log.csv` (every run), `HANDOFF.md` (current state), `submissions/` (every upload), `git log`.
 
@@ -309,6 +322,126 @@ weighting mitigation is a different fix for the same problem, not verified at ou
 v2 pass is also the moment to run the one cheap check: drop the abbreviation-normalized families from
 the blocking union (keep them as scoring features only) and compare recall/cands-per-entity against the
 Prompt 4 best. Report both configs; keep whichever wins on recall at bounded cands/entity.
+```
+
+## Prompt 8A — Re-tune the decoder against E06's features (cheap, do first)
+```
+Context: the recorded decoder (threshold, t_match=0.7, t_empty=0.3) predates E06's normalization-v2 and
+retrieval-evidence/ambiguity features. E05 separately found ef05 (tau=0.8, lam=0.0) beat threshold on
+stage-2-only scores. Neither has been checked against E06's actual OOF scores yet.
+Using the cached E06 OOF scores (retrain stage 1 + stage 2 if not already cached for the current tag),
+run decide.tune() and report the full grid result, not just the winner. Compare the winning decoder's OOF
+breakdown (all/US/India/singletons/matched) and US<->India transfer against E06's committed numbers
+(0.96817 all, 0.89623 US->India, 0.94474 India->US). Update cache/<tag>_decoder.json and
+experiments/log.csv only if the winner changed from what's currently recorded; note E06 either way.
+Don't touch features, model, or blocking. This is read-only re-tuning.
+```
+
+## Prompt 8B — CORRECTED: no bug exists here; run stage 2 for real on the SageMaker full run
+```
+Correction (found while starting Prompt 8A): the previous wording of this prompt described
+"models2 empty" as an unexplained bug. It is NOT a bug. docs/NEXT_STEPS.md's own section 0 (predates
+this correction) already diagnosed it: train.ipynb's cell 5bc14283 launched the MVP run with an explicit
+`--no-stage2` flag, on purpose (the MVP path). E05/E06's dev OOF numbers (0.96519/0.96817) already prove
+stage 2 trains and scores correctly when enabled -- that's literally how those numbers were produced.
+What's actually true: no FULL (non-eval-only, real test-set) run has ever been done with stage 2 enabled
+-- every eval-only dev run enabled it, the one full run to date deliberately didn't. This is an unexercised
+path, not a broken one.
+Action: nothing to fix. When Prompt 9's full SageMaker run happens, do NOT pass --no-stage2 (the default
+already trains stage 2) and confirm in the log that "stage2: N features" and a stage-2 fold loop appear
+before trusting the run. As light hardening (optional, cheap): add a test asserting model.train_oof never
+silently returns an empty models list for a normal (non-degenerate) input, so a real future regression
+here would fail loudly instead of quietly falling back to stage-1-only.
+```
+
+## Prompt 8C — Joint S2/S3 cluster features (Exp J1; docs/RESEARCH_JOINT_S2S3.md §3 Option A)
+```
+Read docs/RESEARCH_JOINT_S2S3.md in full first -- it has the design, don't re-derive it.
+Implement (TDD, docstrings, OOF-scores only, country never a feature):
+1. In src/context.py, add a function that builds a cross-source (is_s3 differs) candidate-similarity
+   graph per S1 group, reusing triangle_features' existing name+address blended token_set_ratio metric
+   and its sim > 0.8 threshold, then computes connected components (union-find; group sizes are ~40 so
+   this is cheap).
+2. Add per-candidate features: f2_comp_size, f2_comp_n_sources (1 or 2), f2_comp_mean_p, f2_comp_max_other_p
+   (best OTHER member's p in the same component). Wire into add_stage2_features.
+3. Retrain stage 2 on the current best config (E06 blocking/features) as exp J1. Compare OOF breakdown
+   (all/US/India/singletons/matched) and transfer against E06. Dump feature importances
+   (ER_DUMP_IMPORTANCE=1) and report specifically whether f2_comp_* rank above or below the existing
+   f2_sim_top_other_src -- this tells us if the new features are redundant with what triangle support
+   already gives the model.
+Keep only if f05_all improves and transfer doesn't regress beyond the ~0.002 tolerance. Log as J1 in
+experiments/log.csv either way (a null result here is a legitimate, useful outcome per the research doc).
+```
+
+## Prompt 8D — Joint S2/S3 correlated decision (Exp J2; docs/RESEARCH_JOINT_S2S3.md §3 Option B)
+```
+Prerequisite: Prompt 8C (J1) done and logged, whatever its outcome.
+Read docs/RESEARCH_JOINT_S2S3.md §3 Option B and §4 in full before starting.
+Implement in src/decide.py: a new correlated-Monte-Carlo mode for select_expected_f05 that replaces the
+independent `hits = rng.random(...) < pb` draw with the two-level draw described there (shared per-cluster
+latent z_c ~ Bernoulli(max p in cluster), member draws conditioned on z_c that exactly preserve each
+candidate's own marginal p_i). Reuse the same connected-components structure from Prompt 8C (built once
+per group from OOF p1/p2, never in-fold -- state this explicitly in the commit message and the
+experiments/log.csv change note). Singleton components (no cross-source corroboration) must produce
+bit-for-bit identical sampling to the current independent-draw code -- write a test asserting this.
+Add `joint: True/False` as a new dimension in decide.tune's grid, exactly parallel to how `one_to_one`
+is already gridded. Run as exp J2: report the full grid, the winner, OOF breakdown, and US<->India
+transfer vs the best of J1/E06. Keep only if it wins on OOF and doesn't regress transfer beyond ~0.002.
+```
+
+## Prompt 8E — Hard-negative mining loop (docs/NEXT_STEPS.md item 12)
+```
+After Prompt 8C (J1) lands (use whichever stage-2 config won), pull the model's own high-confidence OOF
+false positives: feats[(feats[pcol] >= t_match) & (y == 0)] -- same selection notebooks/02_errors.ipynb
+already uses for its false-positive view, `pcol` being whichever of p1/p2 the current best config scores
+with. Feed this pool into sampling.training_rows as an always-kept, upweighted negative bucket (don't
+replace the existing hard/easy negative split, add to it) for one retraining pass, exp id "HN1".
+Report: OOF breakdown (all/US/India/singletons/matched) vs the pre-mining baseline, with particular
+attention to precision on the matched slice (not just f05_all, since this is a precision-targeted change).
+Re-check US<->India transfer explicitly -- flag if hard negatives mined from US/India errors look like
+they might be overfitting to US/India-specific false-positive patterns. One iteration only; don't loop
+without a fresh HANDOFF.md/log entry per iteration.
+```
+
+## Prompt 8F — Blocking recall full-data re-measurement (docs/NEXT_STEPS.md item 13)
+```
+Context: B05/E06's 0.9523 recall was measured on the dev sample (config.DEV_FRAC). Some of the historical
+comparison numbers (docs/EDA_TEAMMATE.md §13) are flagged UNVERIFIED/pilot-scale and acknowledged
+optimistic -- don't assume 0.9523 holds at full scale without checking.
+Use blocking.recall_at_ks (already built in src/blocking.py, diagnostic-only, not on the default pipeline
+path) at the full train S1/pool (frac=1.0 or as large as memory allows on the current machine) instead of
+the dev sample. Report pair_recall and cands_per_entity at the current K values plus a couple above/below
+for context. If full-scale recall is meaningfully below 0.9523, revisit Prompt 4B's character 3-4-gram
+channel (never built -- B07 was never run). If it holds, say so explicitly and close this item out.
+```
+
+## Prompt 8G — France-specific robustness hardening (docs/NEXT_STEPS.md item 14)
+```
+Hard rule: nothing here may read or branch on the `country` column as a model feature -- only vocabulary-
+coverage / token-overlap signals computed identically for every record, per CLAUDE.md.
+1. Run scripts/france_check.py against the current output/matching_results.tsv (regenerate output/ first
+   if it's the empty E00 baseline -- check before trusting it, see SOLUTION_DEEPDIVE.md §12) and report
+   its France-vs-US/India recommendation.
+2. Test whether leaning stage-2 scoring more on character-level similarity (f_name_norm_jw and rapidfuzz
+   char-level scores) relative to token-overlap scores, specifically for pairs where name-token overlap is
+   low, changes the OOF breakdown -- implement as a feature interaction or model input, not a
+   country-conditioned rule.
+3. Test a stricter empty-gate keyed on low name/first-token frequency (existing f_freq_a/f_first_tok_freq_a
+   features, a vocabulary-coverage proxy) rather than the flat t_empty threshold.
+Report OOF breakdown, transfer, and (if run) the france_check.py comparison for each sub-change. Keep only
+changes that improve or hold OOF F0.5 while not regressing transfer.
+```
+
+## Prompt 8H — Segment-specific thresholds (docs/NEXT_STEPS.md item 15)
+```
+Prerequisite: Prompts 8C-8E should be resolved first -- this sharpens whatever the best decoder is at that
+point, sequence last among the new differentiator work.
+Grid decide.tune's threshold/tau/lam separately per segment, defined ONLY by existing country-agnostic
+columns: is_s3, f_addr_empty_a/_b, f_script_a/_b (never country). Report each segment's local-best OOF
+F0.5 vs the single global decoder's score on that same segment slice. Keep a segment-specific parameter
+only where the local grid beats the global decoder by enough to justify the added decode-path complexity
+(state the bar you used). Report the combined OOF breakdown and transfer for the final segmented decoder
+vs the single global one.
 ```
 
 ## Prompt 9 — Full run on SageMaker → submission #2

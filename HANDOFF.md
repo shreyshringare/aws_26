@@ -6,20 +6,21 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 ## Current state (overwrite every shift)
 | Item | Value |
 |---|---|
-| Last updated | 2026-09-25 (post-E04, Prompt 6 launching) |
-| Next plan task | Prompt 6 — stage-2 dev eval (exp E05), real `context.py` code now merged |
-| Best dev OOF F0.5 | **0.96274 (exp E04**, stage-1 only, post-merge blocking+features+sampling; up from E03's 0.94642) |
-| Dev blocking recall / cands per entity | 0.9534 / 42.6 (exp B05, up from B03's 0.9185/42.5) |
-| Transfer US→IN / IN→US | **0.89097 / 0.94047** (exp E04, first time computed — real gap vs in-distribution 0.9627, relevant for France risk) |
-| Best public LB (exp id) | 0.942 (exp E03, tag sub-d1-01) — first real upload, predates E04's blocking/feature gains |
-| Uploads used today (of 5) | D1: 1 · D2: 0 · D3: 0 |
-| Chosen decoder + params | threshold, t_match=0.7, t_empty=0.3 (re-tuned on E04, same params as E03 coincidentally) |
-| Cache tag in use | v2 |
+| Last updated | 2026-09-26 (post-E06; Prompts 8A-8H code landed, full SageMaker run is next) |
+| Next plan task | Full SageMaker run with stage 2 + Exp J2 + all Prompt 8A-8H code enabled (Prompt 9), then re-tune decoder for real (Prompt 8A) and re-measure blocking recall at full scale (Prompt 8F) |
+| Best dev OOF F0.5 | **0.96817 (exp E06**, normalization v2 + retrieval-evidence features; up from E05's 0.96519 / E04's 0.96274 / E03's 0.94642) |
+| Dev blocking recall / cands per entity | 0.9523 / 42.6 (E06, dev-sample only — full-scale re-check still open, Prompt 8F) |
+| Transfer US→IN / IN→US | **0.89623 / 0.94474** (E06 — best transfer numbers yet, improved alongside f05_all) |
+| Best public LB (exp id) | 0.942 (exp E03, tag sub-d1-01) — still the only upload spent; E04/E05/E06's gains are NOT on the leaderboard yet |
+| Uploads used today (of 5) | D1: 1 · D2: 0 (session) |
+| Chosen decoder + params | ef05, tau=0.8, lam=0.0 (cache/v3_decoder.json, oof_f05=0.96817 — matches E06 exactly, so this WAS re-tuned for E06 already; earlier docs claiming a stale t_match=0.7/0.3 were themselves stale, corrected this session) |
+| Cache tag in use | v3 |
 | Running jobs (where, command, log file) | none |
-| SageMaker instance state (account owner) | running — `ml.r5.4xlarge`, notebook `train.ipynb` executed through section 11 + local model/decoder save (this session's Prompt 3-6 work has been on local Windows machine, not yet re-run on SageMaker) |
-| Shared S3 bucket for cache/artifacts | `aws-hack-sagemaker` created, **not yet writable** — notebook instance IAM role has no S3 permissions; needs policy attach + instance stop/start |
-| Known bugs / blockers | (1) S3 push blocked on IAM role (see above). (2) System RAM tight on local machine (as low as 1.1GB free during blocking runs) — ER_JOBS may need lowering from prompt defaults. (3) Feature importances + one-to-one ablation (docs/IDEAS.md B.8) not yet captured for E04 — pipeline doesn't persist fold models/OOF scores, would need a rerun; deferred to whenever Prompt 6 reruns training. |
-| Target | 0.942 (public LB) → 0.985+ requested. Dev OOF now at 0.96274 (E04), real progress. See `docs/NEXT_STEPS.md` ranked plan. |
+| Code landed this session (not yet run at scale) | Exp J1 (`context.cluster_features`, cross-source cluster features), Exp J2 (`decide.correlated_hits` + `comp_col`/`joint` wiring through `tune`/`apply_decoder`/`run_pipeline.main`), Exp HN1 hook (`sampling.training_rows(hard_fp=...)`), segment-specific decoding (`decide.tune_segments`/`apply_segmented_decoder`), France vocabulary-coverage empty gate (`decide.select_threshold_vocab_aware`). All TDD, all unit-tested (103 tests pass), none exercised on real data yet — local machine has ~1.9GB free RAM, unsafe for a full stage-1+stage-2 retrain (see docs/RESEARCH_JOINT_S2S3.md, docs/NEXT_STEPS.md items 11-15). Plan: exercise all of it in one full SageMaker run rather than locally. |
+| SageMaker instance state (account owner) | not confirmed running this session — check before assuming it's up |
+| Shared S3 bucket for cache/artifacts | `aws-hack-sagemaker` created, **still not confirmed writable** — check IAM role policy before relying on it |
+| Known bugs / blockers | **None currently open.** (Corrected this session: "models2 empty" was never a bug — the one full run to date deliberately passed `--no-stage2`; don't pass it on the next full run.) RAM is tight on the local Windows machine (as low as ~1.9GB free observed this session) — this is why the new J1/J2/HN1/segment/vocab-gate code hasn't been measured locally; use SageMaker instead. |
+| Target | 0.942 (public LB) → 0.985+ requested. Dev OOF now at 0.96817 (E06). See `docs/NEXT_STEPS.md` items 11-16 for the ranked path forward. |
 
 ## Credits tracker (each teammate has their own AWS account)
 | Member | AWS plan (Free/Paid) | Credits left | Instance quota ok? | Notes |
@@ -61,6 +62,29 @@ before you leave. Plan: `docs/superpowers/plans/2026-09-25-entity-resolution.md`
 4. **France risk**: 45% of France name tokens unseen in train (the US↔IN proxy only shows 28–36%) → prefer char-level similarity; rarity/frequency stats computed on the test pool per country (already the case).
 
 ## Shift entries (newest first)
+### 2026-09-26 — post-E06 differentiator code (Prompts 8A-8H), deferred to SageMaker for measurement
+- Ranked the remaining differentiation opportunities (joint S2/S3 cluster consistency, hard-negative
+  mining, blocking recall push, France hardening, segment thresholds, ensembling) and wrote
+  `docs/RESEARCH_JOINT_S2S3.md` researching the top-ranked item in depth. Turned the list into
+  `docs/PROMPTS.md` Prompts 8A-8H and `docs/NEXT_STEPS.md` items 11-16.
+- Corrected a stale/incorrect claim from earlier docs: "models2 empty" was never an unresolved bug
+  (see `docs/NEXT_STEPS.md` Warning 13, `docs/PROMPTS.md` Prompt 8B, `SOLUTION_DEEPDIVE.md` §14) —
+  the one full run to date just deliberately passed `--no-stage2`.
+- Local machine RAM was too tight (~1.9GB free) to safely retrain stage 1+2 for a real Prompt 8A
+  decoder re-tune, so pivoted per user direction: implement all the code (TDD) locally, defer actual
+  measurement to a single comprehensive SageMaker full run.
+- Landed, all TDD with unit tests (103 pass): Exp J1 cluster features (`context.cluster_features`),
+  Exp J2 correlated decision-time decoder (`decide.correlated_hits`, wired through
+  `tune`/`apply_decoder`/`run_pipeline.main` via `comp_col`/`dec["joint"]`, backward-compatible —
+  omitting `comp_col` reproduces prior behavior exactly), Exp HN1 hard-negative mining hook
+  (`sampling.training_rows(hard_fp=...)`, also fixed a latent `ZeroDivisionError` at
+  `easy_rate=0.0`), segment-specific decoding (`decide.tune_segments`/`apply_segmented_decoder`),
+  France vocabulary-coverage empty gate (`decide.select_threshold_vocab_aware`).
+- **None of the above has been measured on real data yet.** Next driver: run the full pipeline on
+  SageMaker with stage 2 enabled (not `--no-stage2`) so Exp J2 actually engages, then work through
+  Prompt 8A (decoder re-tune, now automatic since `decide.tune` always runs) and Prompt 8F (blocking
+  recall at full scale) using that same run's outputs before deciding whether to spend an upload.
+
 ### 2026-09-25 — MVP run (stage-1 only)
 - Ran `train.ipynb` end-to-end on `ml.r5.4xlarge`: normalized, blocked (B03 multi-channel,
   recall 0.9185, 42.5 cands/entity), scored 74,992,735 test pairs, decoded, wrote outputs.

@@ -1,4 +1,4 @@
-# Next Steps — combined plan (current: 0.942 local OOF → target 0.98)
+# Next Steps — combined plan (current: 0.96817 dev OOF / exp E06, 0.942 public LB → target 0.98)
 
 Merges `HANDOFF.md` current state + `docs/IMPROVEMENT_PLAN.md` teammate-EDA findings into one ranked
 action list. One change per experiment, log every run in `experiments/log.csv` per `CLAUDE.md`.
@@ -6,7 +6,17 @@ action list. One change per experiment, log every run in `experiments/log.csv` p
 **Reality check on the target:** 0.98 macro F0.5 is very high for noisy fuzzy-matched business records —
 treat it as "push as far as possible," not a guaranteed number. The honest ceiling depends on blocking
 recall (you cannot score what you never shortlist) and on how separable the hard-negative collision
-groups actually are. Items 1–3 below are the real path from 0.942 upward; items 4+ are refinements.
+groups actually are. Items 1–3 below are DONE (see the status note before the ranked-order section) — the
+real remaining path from 0.96817 upward is items 11–16 (the post-E06 differentiator list). Items 4–10
+are refinements layered on top, several already folded into E06.
+
+**Status since this doc was first written:** blocking recall is at 0.9523 (B05/E06, `na` cross keys),
+stage 2 (triangle support) is real and kept (E05), normalization v2 (alias split + French
+etablissements/bis/ter) landed as E06 — current best, 0.96817 dev OOF, improves singletons and both
+transfer directions simultaneously. Public LB is still the pre-E04 E03 number (0.942, one upload spent);
+no upload has been spent on E04/E05/E06 yet. **Known blocker carried over from `HANDOFF.md`: the last
+full SageMaker run had `models2` come back empty (stage 2 silently disabled at test time) — this must be
+fixed before a fresh full run/upload, independent of the new items below.**
 
 ---
 
@@ -209,27 +219,153 @@ accurate and these two items haven't silently landed elsewhere in the codebase.
 
 ---
 
+## 11. Joint S2↔S3 cluster consistency at decision time (`docs/IDEAS.md` B.6, 🧪 — biggest unexplored lever)
+
+**Finding:** stage-2 triangle support (`context.py`) already computes cross-source corroboration as
+*features* into the stage-2 model, but the decoder (`decide.select_expected_f05`) still samples each
+candidate's inclusion as an **independent** Bernoulli draw — the correlation between mutually-supporting
+S2/S3 candidates never reaches the actual decision. Full design researched and written up in
+`docs/RESEARCH_JOINT_S2S3.md` — don't re-derive it, read that doc first.
+
+**Action — two experiments, in order (one-change-per-experiment discipline):**
+1. **Exp J1** (cheap, low-risk): add cluster-level features to `context.py` — connected components of a
+   cross-source (`is_s3` differs) candidate-similarity graph (reuse the `sim > 0.8` threshold triangle
+   features already use), then `f2_comp_size` / `f2_comp_n_sources` / `f2_comp_mean_p` /
+   `f2_comp_max_other_p` per candidate. Retrain stage 2, compare against E06 on OOF F0.5 breakdown +
+   transfer, and check `ER_DUMP_IMPORTANCE` to see whether this is redundant with the existing
+   `f2_sim_top_other_src` feature (a real possibility — measure, don't assume).
+2. **Exp J2** (the actual decision-time mechanism, gated on J1 not regressing anything): replace
+   `select_expected_f05`'s independent Monte Carlo draw with the two-level correlated draw in
+   `docs/RESEARCH_JOINT_S2S3.md` §3 Option B (shared per-cluster latent `z_c`, member draws that
+   preserve each candidate's own marginal `p_i` exactly). Singleton components degrade to *identical*
+   current behavior by construction, so this can't uniquely hurt singletons/uncorroborated entities. Grid
+   it into `decide.tune` as a new dimension (`joint: True/False`) exactly like `one_to_one` already is;
+   keep only if it beats the current best decoder on OOF **and** doesn't regress US↔India transfer beyond
+   the ~0.002 tolerance already precedented for E05.
+
+**Why it's ranked highest:** directly extends an already-built differentiator (triangle support) into
+territory most fuzzy-match competitors won't touch at all (decision-time joint reasoning, not just
+pairwise scoring). Evidence it should help: mean 3.46 matches/entity spread across both S2 and S3
+(`docs/EDA.md` §B), and concrete `docs/ERRORS.md` cases (the 420/433 vs 100/113 number-conflict
+inconsistency, the `Costa Pediatrics` ambiguous threshold case) that look exactly like missing
+corroboration signal at decode time.
+
+## 12. Hard-negative mining loop (metric-native precision lever)
+
+**Idea:** F0.5 weights precision 2× over recall. The most metric-native way to improve is to make the
+model's own confident mistakes harder to make again — retrain with the model's high-confidence OOF false
+positives fed back in as additional (weighted) hard negatives, rather than relying on generic feature
+engineering to fix precision indirectly.
+
+**Action:** after an OOF run, pull `feats[(feats["p1"]/"p2"] >= t_match) & (y == 0)]` (same selection
+`02_errors.ipynb` already uses for its false-positive view) as the hard-negative pool. Feed it back into
+`sampling.training_rows` as an always-kept (never subsampled) negative bucket, upweighted, for the next
+training pass. One iteration first (don't loop indefinitely — each iteration needs its own
+`experiments/log.csv` row and OOF re-check); measure precision specifically (not just f05_all) on the
+matched slice, and re-check transfer — hard negatives mined from US/India OOF errors could plausibly
+overfit to US/India-specific false-positive patterns that don't generalize to France, so this is exactly
+the kind of change the transfer-robustness rule exists to catch.
+
+## 13. Blocking recall → 0.97 on full data (still the single largest measured lever)
+
+**Status:** B05/E06 sits at 0.9523 recall (dev sample, `FRAC` per `config.DEV_FRAC`/`TRAIN_FRAC`), short
+of the 0.97 `CLAUDE.md` target. The pilot numbers behind some of this (see `docs/EDA_TEAMMATE.md` §13
+UNVERIFIED tags) were measured against a small distractor pool and are acknowledged optimistic — a
+full-data re-measurement is needed before concluding recall is "close enough."
+
+**Action:** re-run `blocking.recall_at_ks` (already built, diagnostic-only, not on the default path) at
+full `TRAIN_FRAC`/on the full train pool rather than the dev sample, to get a recall number not subject
+to the small-distractor-pool optimism bias. If it's meaningfully lower than 0.9523 at full scale, revisit
+Prompt 4B's character 3-4-gram channel (still not built — B07 was never run, current recall cleared the
+0.95 skip threshold on the dev sample only).
+
+## 14. France-specific robustness hardening
+
+**Finding:** France is 15% of test S1, completely absent from train, and 45% of its name tokens are
+unseen in train vocabulary (vs 28-36% in the US↔India transfer proxy that's supposed to stand in for it)
+— the proxy is measurably optimistic for France specifically. Since *no* competitor trained on France
+either, a team that specifically hardens this segment gains disproportionately: everyone is weak here,
+but not everyone will have bothered to check.
+
+**Action (three concrete, country-never-a-feature-compliant options):**
+1. Char-level similarity weighting: when name-token overlap is low (a proxy for high OOV rate, computable
+   without reading country), lean the decision more on `f_name_norm_jw`/rapidfuzz character-level scores
+   relative to token-overlap scores — test as a feature interaction or a stage-2 adjustment, not a
+   country-conditioned rule.
+2. A stricter empty-gate for candidates with low name-token coverage against the *pool's* vocabulary
+   (computable per-record via `first_tok_freq`/`name_freq`, already existing features) — again a
+   vocabulary-coverage signal, not a country lookup.
+3. Adversarial train-vs-test-France validation: since France can't be held out during training the way
+   US/India can (it's not in train at all), the best available check is `scripts/france_check.py`'s
+   match-rate / mean-matches-per-matched comparison against US/India on live output — run it after every
+   significant model change, not just once before an upload.
+
+**Hard rule reminder:** none of the above may read or branch on the `country` column as a model feature
+— only as a blocking key, per `CLAUDE.md`. Vocabulary-coverage and token-overlap signals are legitimate
+because they're computed the same way for every record regardless of country label.
+
+## 15. Segment-specific thresholds (S2 vs S3, missing-address, native-script)
+
+**Idea:** `docs/IDEAS.md` B.6 already flags this: sharpen precision on known-hard segments — S2 vs S3
+(different noise profiles), missing pool address, native-script pairs — with segment-specific decoder
+parameters, explicitly **not** per-country segments (France would have no train-side segment to tune
+against, so a country-keyed threshold is untunable and would violate the country-feature spirit even if
+technically legal since country is only ever a blocking key here).
+
+**Action:** after Exp J1/J2 and the hard-negative loop land, grid `decide.tune`'s threshold/tau/lam
+separately per segment (defined by existing country-agnostic columns: `is_s3`, `f_addr_empty_a`/`_b`,
+`f_script_a`/`_b`) instead of one global decoder, using the same OOF discipline. Keep only segments where
+the local grid beats the global decoder's OOF score on that segment by enough to be worth the added
+decode-path complexity.
+
+## 16. Ensembling / seed averaging (low priority — Day 3 if time allows)
+
+Cheap variance reduction (`docs/IDEAS.md` B.5 already flags this as 🧪, "Day 3 if time allows" tier):
+average predictions across a few different `SEED` values or fold splits. Genuine differentiation
+potential is low relative to items 11-15 above — only worth spending time on once those are exhausted or
+if a shift has slack time near the end.
+
 ## Ranked order for a friend picking this up cold
 
-**Status update:** item 1 is DONE — B05 (EDA weights + `na` cross keys) committed, recall 0.9534 (up
-from 0.9185), see `experiments/log.csv` B04/B05/B06 rows. Item 2 (Prompt 3 merge) is also DONE —
-`src/context.py` has real stage-2 code now. Prompt 5 (item "turn stage 2 on for real," exp E04) is
-running as of this update.
+**Status update:** items 1, 2, 3, 6 and 10 are DONE. Item 1 (blocking recall) landed at 0.9534/0.9523
+(B05/E06). Item 2 (stage-2 merge + real dev eval) landed as E05 (0.96519, kept — beats E04 on every
+metric). Item 3 (decoder re-tune) happened for E05 (ef05, tau=0.8, lam=0.0 — first time ef05 beat
+threshold on OOF) though it hasn't been re-run since E06's feature changes — see the new item 1 below.
+Item 6 (normalization v2: alias split + French etablissements/bis-ter) landed as E06, current best
+(0.96817), improving f05_all, singletons and both transfer directions simultaneously. Item 10 (own-EDA
+audit) is fully resolved. Items 4, 5, 7, 8, 9 remain open refinements (see below); items 11-16 are the
+new post-E06 priority list and are now the main path forward.
 
-1. ~~Item 1 (blocking recall → 0.97)~~ DONE at 0.9534 (short of 0.97, but past the point of easy further
-   gains without the char n-gram channel — see Prompt 4's B06 result, diminishing returns).
-2. ~~Item 2 (merge stage-2 code)~~ DONE via Prompt 3. The E04 dev-eval run itself (Prompt 5) is in
-   progress — check `experiments/log.csv` for an E04 row before re-running it.
-3. Item 3 (re-tune decoder against real stage-2 scores, once E05/Prompt 6 lands) — fold in item 8's
-   singleton constraint here.
-4. Item 5 (quick generic-vocab check — cheap, read-only, do any time).
-5. Item 9 (near-miss number + NaN-address feature gaps — cheap, testable alongside E04's follow-up).
-6. Item 6 + item 10 (normalization v2 — alias split + French etablissements/bis-ter, confirmed real
-   gaps by direct code check, not just doc claims — France-specific, meaningful for the test set's
-   hardest 15%).
-7. Item 7 (normalization-as-identity-key experiment — now resolved with methodology, run it during
-   item 6's Prompt 8 pass).
-8. Item 4 (hard-negative ingestion — blocked on teammate pushing files).
+1. **Re-tune the decoder against E06's features** (item 3, carried forward) — cheap, do this before
+   anything else below: `decide.tune` on E06's OOF scores, confirm whether ef05 tau=0.8/lam=0.0 (E05's
+   winner) still wins or whether E06's alias/frequency features shift the optimum. Near-zero-cost check
+   that should happen before investing in items 11-16.
+2. **Item 11 — Joint S2↔S3 cluster consistency (Exp J1 then J2).** Ranked highest of the new items: most
+   novel, extends an already-built differentiator, has concrete evidence it should help
+   (`docs/RESEARCH_JOINT_S2S3.md`). Start with J1 (cheap feature-only variant) before attempting J2
+   (decoder surgery).
+3. ~~"Fix the stage-2-silently-disabled bug"~~ **CORRECTED, not a bug** — see Warning 13. The one full
+   run to date deliberately passed `--no-stage2`; E05/E06 already prove stage 2 trains and scores
+   correctly when enabled. Nothing to fix — just don't pass `--no-stage2` on the next full run (Prompt 9).
+4. **Item 13 — blocking recall full-data re-measurement.** Confirms whether 0.9523 holds at scale before
+   trusting it as "close enough" to the 0.97 target.
+5. **Item 12 — hard-negative mining loop.** Metric-native precision lever; do after item 11's J1 lands so
+   the hard-negative pool reflects the best available stage-2 model, not a stale one.
+6. **Item 14 — France-specific robustness hardening.** Do this before spending a second leaderboard
+   upload — everyone's weak on France, so this is where disproportionate leaderboard gain lives, and it's
+   cheap to check (`scripts/france_check.py` already exists).
+7. **Item 15 — segment-specific thresholds.** Sequence last among the new items — sharpens what's already
+   there rather than adding new signal, most value once items 11/12 have changed what "the best decoder"
+   even is.
+8. Item 5 (generic-vocab collision check — cheap, read-only, do any time, hasn't blocked anything).
+9. Item 9 remaining half (NaN-vs-0 address feature test — cheap, still untested; near-miss number flag
+   from the same item may be partially covered by E06's retrieval-evidence/ambiguity features now, verify
+   before re-implementing).
+10. Item 7 (normalization-as-identity-key experiment, `ER_NAME_KEY_MODE=features_only` toggle — built in
+    `config.py` but never measured against the current default, per `SOLUTION_DEEPDIVE.md` §4).
+11. Item 4 (hard-negative ingestion from teammate's EDA — blocked on teammate pushing files; distinct
+    from item 12's self-mined hard negatives, both worth doing, this one waits on someone else).
+12. Item 16 (ensembling/seed-averaging — lowest priority, Day 3 filler only).
 
 Every item: one experiment, one `experiments/log.csv` row, commit before the next change. Only spend a
 leaderboard upload on a meaningful local OOF gain that also doesn't hurt US↔IN transfer.
@@ -271,6 +407,24 @@ leaderboard upload on a meaningful local OOF gain that also doesn't hurt US↔IN
     are different questions, don't let one decision imply the other.
 12. General: one change per experiment, log every run, only spend a leaderboard upload on a meaningful
     local gain that doesn't also hurt transfer.
+13. **CORRECTED — `models2 is None` was never an unexplained bug.** An earlier pass at this doc
+    (and `SOLUTION_DEEPDIVE.md`) treated it as an open blocker needing investigation. It isn't: the one
+    full (non-eval-only) run to date explicitly passed `--no-stage2` (`train.ipynb` cell `5bc14283`),
+    deliberately, for the MVP path — same as Warning 2. E05/E06's dev OOF numbers already prove stage 2
+    trains and scores correctly when enabled. What's actually true is narrower: no full run has *ever*
+    had stage 2 enabled — that's an unexercised path, not a broken one. Nothing to fix; just don't pass
+    `--no-stage2` on the next full run.
+14. **Item 11 (Exp J2) leakage discipline:** the correlated-decoder mechanism in
+    `docs/RESEARCH_JOINT_S2S3.md` must build its similarity graph from OOF `p1`/`p2` only, exactly like
+    `triangle_features` already does — easy to accidentally wire up with in-fold scores during a refactor
+    of `decide.py`. State explicitly in the `experiments/log.csv` `change` note that OOF-only scores were
+    used.
+15. **Item 12 (hard-negative mining) transfer risk:** hard negatives mined from US/India OOF errors may
+    not represent France's failure modes at all — re-check US↔India transfer after each mining iteration,
+    same tolerance rule as everything else (~0.002).
+16. **Item 14 (France hardening):** every mitigation must be computable identically regardless of country
+    label (vocabulary coverage, token overlap — not a `country == "France"` branch anywhere). Re-read
+    `CLAUDE.md`'s hard rule before implementing any of item 14's three options.
 
 ## Leads (follow-up pointers)
 
@@ -297,3 +451,12 @@ leaderboard upload on a meaningful local OOF gain that also doesn't hurt US↔IN
     `docs/PROMPTS.md` Prompt 5, report impact before keeping.
 12. Full underlying evidence for all of the above: `docs/EDA_TEAMMATE.md` (48-file EDA write-up,
     evidence-level tags in §0/§13).
+13. Item 11 — read `docs/RESEARCH_JOINT_S2S3.md` in full before starting; run `docs/PROMPTS.md`
+    Prompt 8C (Exp J1) then Prompt 8D (Exp J2).
+14. Item 12 — run `docs/PROMPTS.md` Prompt 8E; pull the hard-negative pool from the same
+    `p >= t_match & y == 0` selection `notebooks/02_errors.ipynb` already uses.
+15. Item 13 — run `docs/PROMPTS.md` Prompt 8F; use `blocking.recall_at_ks` (already built,
+    `src/blocking.py`) at full scale rather than re-running `generate_candidates` per K.
+16. Item 14 — run `docs/PROMPTS.md` Prompt 8G; `scripts/france_check.py` already exists and does the
+    match-rate/mean-matches comparison, just needs running after each relevant change.
+17. Item 15 — run `docs/PROMPTS.md` Prompt 8H once items 11/12 have landed, not before.
