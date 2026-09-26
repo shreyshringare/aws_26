@@ -358,9 +358,9 @@ new post-E06 priority list and are now the main path forward.
    there rather than adding new signal, most value once items 11/12 have changed what "the best decoder"
    even is.
 8. Item 5 (generic-vocab collision check — cheap, read-only, do any time, hasn't blocked anything).
-9. Item 9 remaining half (NaN-vs-0 address feature test — cheap, still untested; near-miss number flag
-   from the same item may be partially covered by E06's retrieval-evidence/ambiguity features now, verify
-   before re-implementing).
+9. ~~Item 9 near-miss number flag~~ DONE — `f_nz_num_near_miss` (noise.py), confirmed not covered by
+   E06's retrieval-evidence features before implementing (grepped for it, genuinely missing). Item 9's
+   other half (NaN-vs-0 address feature test) is still open — cheap, still untested.
 10. Item 7 (normalization-as-identity-key experiment, `ER_NAME_KEY_MODE=features_only` toggle — built in
     `config.py` but never measured against the current default, per `SOLUTION_DEEPDIVE.md` §4).
 11. Item 4 (hard-negative ingestion from teammate's EDA — blocked on teammate pushing files; distinct
