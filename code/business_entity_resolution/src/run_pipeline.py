@@ -274,10 +274,16 @@ def main(argv=None):
     scorer = Scorer(s1n, pooln, gt, rids)
     extra = brep["missed_per_entity"]
     scored = feats[["s1_rid", "pool_rid"]].assign(p=feats[pcol].to_numpy())
+    # Exp J2 (docs/RESEARCH_JOINT_S2S3.md): only available once stage 2 has run (cluster_features
+    # needs p1 to build clusters, wired into add_stage2_features) -- comp_col=None on a stage-1-only
+    # run reproduces prior behavior exactly, decide.tune's grid just doesn't gain the joint dimension.
+    comp_col = context.CLUSTER_ID_COL if pcol == "p2" else None
+    if comp_col:
+        scored[comp_col] = feats[comp_col].to_numpy()
     calib = decide.fit_calibrator(scored["p"].to_numpy(), y)
-    dec, grid = decide.tune(scored, calib, extra, scorer)
+    dec, grid = decide.tune(scored, calib, extra, scorer, comp_col=comp_col)
     log(f"decoder {dec}")
-    sel = decide.apply_decoder(scored, dec, calib, extra)
+    sel = decide.apply_decoder(scored, dec, calib, extra, comp_col=comp_col)
     bd = scorer.breakdown(sel)
     log(f"OOF breakdown {bd}")
     if os.environ.get("ER_DUMP_OOF"):
@@ -313,7 +319,9 @@ def main(argv=None):
         ft["p1"] = m1.predict_proba(ft[cols1])[:, 1]
         ft = context.add_stage2_features(ft, poolt)
         scored_t = ft[["s1_rid", "pool_rid"]].assign(p=m2.predict_proba(ft[cols])[:, 1])
-    selt = decide.apply_decoder(scored_t, dec, calib, extra)
+        if comp_col:
+            scored_t[comp_col] = ft[comp_col].to_numpy()
+    selt = decide.apply_decoder(scored_t, dec, calib, extra, comp_col=comp_col if m2 is not None else None)
     write_outputs(args.out, s1t, poolt, candt[["s1_rid", "pool_rid"]], selt)
     code = validate(args.out, args.data)
     log(f"validator exit={code}; matched entities={selt['s1_rid'].nunique():,}/{len(s1t):,}; "
